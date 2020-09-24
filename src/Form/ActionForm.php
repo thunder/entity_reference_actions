@@ -75,10 +75,14 @@ class ActionForm implements ContainerInjectionInterface {
    * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
    */
   public function buildForm(array &$element, FormStateInterface $form_state, array $context) {
-    /** @var \Drupal\Core\Field\FieldDefinitionInterface $field_definition */
-    $field_definition = $context['items']->getFieldDefinition();
 
-    $form_state->set('entity_reference_' . $field_definition->getName(), $context['items']);
+    /** @var \Drupal\Core\Field\FieldItemListInterface $items */
+    $items = $context['items'];
+    if ($items->isEmpty()) {
+      return;
+    }
+
+    $field_definition = $items->getFieldDefinition();
 
     $entity_type = $field_definition->getSettings()['target_type'];
 
@@ -90,6 +94,8 @@ class ActionForm implements ContainerInjectionInterface {
     if (empty($actions)) {
       return;
     }
+
+    $form_state->set('entity_reference_' . $field_definition->getName(), $context['items']);
 
     $options = [];
     foreach ($actions as $id => $action) {
