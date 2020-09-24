@@ -11,7 +11,7 @@ use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
- * Class ActionForm.
+ * Provides the form functions to call actions on referenced entities.
  */
 class ActionForm implements ContainerInjectionInterface {
 

@@ -50,7 +50,7 @@ class WidgetTest extends BrowserTestBase {
   /**
    * {@inheritdoc}
    */
-  protected function setUp() : void {
+  protected function setUp(): void {
     parent::setUp();
 
     $this->vocabulary = $this->createVocabulary();
@@ -67,7 +67,10 @@ class WidgetTest extends BrowserTestBase {
     $entity->field_test = [$this->term];
     $entity->save();
 
-    $this->drupalLogin($this->createUser(['administer entity_test content', 'administer taxonomy']));
+    $this->drupalLogin($this->createUser([
+      'administer entity_test content',
+      'administer taxonomy',
+    ]));
   }
 
   /**
@@ -85,7 +88,8 @@ class WidgetTest extends BrowserTestBase {
 
     $this->drupalGet('/entity_test/manage/1/edit');
 
-    $this->assertSession()->fieldExists('field_test_wrapper[entity_reference_actions][options]');
+    $this->assertSession()
+      ->fieldExists('field_test_wrapper[entity_reference_actions][options]');
 
     $this->assertTrue($this->term->isPublished());
 
