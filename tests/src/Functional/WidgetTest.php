@@ -54,7 +54,10 @@ class WidgetTest extends BrowserTestBase {
     parent::setUp();
 
     $this->mediaType = $this->createMediaType('image');
-    $this->media = Media::create(['bundle' => $this->mediaType->id(), 'published' => TRUE]);
+    $this->media = Media::create([
+      'bundle' => $this->mediaType->id(),
+      'published' => TRUE,
+    ]);
 
     $handler_settings = [
       'target_bundles' => [
