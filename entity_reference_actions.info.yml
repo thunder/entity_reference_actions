@@ -1,0 +1,5 @@
+name: Entity Reference Actions
+description: 'Provide an extension for entity reference fields to execute actions on the referenced items.'
+type: module
+package: User interface
+core_version_requirement: ^8.8 || ^9
