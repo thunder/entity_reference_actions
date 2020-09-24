@@ -3,9 +3,11 @@
 namespace Drupal\entity_reference_actions\Form;
 
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
+use Drupal\Core\DependencyInjection\DependencySerializationTrait;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Messenger\MessengerInterface;
+use Drupal\Core\Routing\RedirectDestinationTrait;
 use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -15,7 +17,9 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
  */
 class ActionForm implements ContainerInjectionInterface {
 
+  use DependencySerializationTrait;
   use StringTranslationTrait;
+  use RedirectDestinationTrait;
 
   /**
    * The entity type manager service.
@@ -174,6 +178,21 @@ class ActionForm implements ContainerInjectionInterface {
       });
 
       $action->execute($entities);
+
+      $operation_definition = $action->getPluginDefinition();
+      if (!empty($operation_definition['confirm_form_route_name'])) {
+        $options = [
+          'query' => $this->getDestinationArray(),
+        ];
+        $form_state->setRedirect($operation_definition['confirm_form_route_name'], [], $options);
+      }
+      else {
+        // Don't display the message unless there are some elements affected and
+        // there is no confirmation form.
+        $this->messenger->addStatus($this->formatPlural(count($entities), '%action was applied to @count item.', '%action was applied to @count items.', [
+          '%action' => $action->label(),
+        ]));
+      }
     }
 
   }

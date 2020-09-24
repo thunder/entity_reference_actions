@@ -4,10 +4,10 @@ namespace Drupal\Tests\entity_reference_actions\Functional;
 
 use Drupal\Core\Field\FieldStorageDefinitionInterface;
 use Drupal\entity_test\Entity\EntityTest;
-use Drupal\taxonomy\Entity\Term;
+use Drupal\media\Entity\Media;
 use Drupal\Tests\BrowserTestBase;
 use Drupal\Tests\field\Traits\EntityReferenceTestTrait;
-use Drupal\Tests\taxonomy\Traits\TaxonomyTestTrait;
+use Drupal\Tests\media\Traits\MediaTypeCreationTrait;
 
 /**
  * Testing the widget.
@@ -17,14 +17,14 @@ use Drupal\Tests\taxonomy\Traits\TaxonomyTestTrait;
 class WidgetTest extends BrowserTestBase {
 
   use EntityReferenceTestTrait;
-  use TaxonomyTestTrait;
+  use MediaTypeCreationTrait;
 
   /**
    * {@inheritdoc}
    */
   protected static $modules = [
     'entity_test',
-    'taxonomy',
+    'media_library',
     'entity_reference_actions',
   ];
 
@@ -34,18 +34,18 @@ class WidgetTest extends BrowserTestBase {
   protected $defaultTheme = 'stark';
 
   /**
-   * The test vocabulary.
+   * The test type.
    *
-   * @var \Drupal\taxonomy\VocabularyInterface
+   * @var \Drupal\media\MediaTypeInterface
    */
-  protected $vocabulary;
+  protected $mediaType;
 
   /**
-   * The test term.
+   * The test media.
    *
-   * @var \Drupal\taxonomy\Entity\Term
+   * @var \Drupal\media\MediaInterface
    */
-  protected $term;
+  protected $media;
 
   /**
    * {@inheritdoc}
@@ -53,23 +53,23 @@ class WidgetTest extends BrowserTestBase {
   protected function setUp(): void {
     parent::setUp();
 
-    $this->vocabulary = $this->createVocabulary();
-    $this->term = $this->createTerm($this->vocabulary, ['published' => TRUE]);
+    $this->mediaType = $this->createMediaType('image');
+    $this->media = Media::create(['bundle' => $this->mediaType->id(), 'published' => TRUE]);
 
     $handler_settings = [
       'target_bundles' => [
-        $this->vocabulary->id() => $this->vocabulary->id(),
+        $this->mediaType->id() => $this->mediaType->id(),
       ],
     ];
-    $this->createEntityReferenceField('entity_test', 'entity_test', 'field_test', 'Test', 'taxonomy_term', 'default', $handler_settings, FieldStorageDefinitionInterface::CARDINALITY_UNLIMITED);
+    $this->createEntityReferenceField('entity_test', 'entity_test', 'field_test', 'Test', 'media', 'default', $handler_settings, FieldStorageDefinitionInterface::CARDINALITY_UNLIMITED);
 
     $entity = EntityTest::create();
-    $entity->field_test = [$this->term];
+    $entity->field_test = [$this->media];
     $entity->save();
 
     $this->drupalLogin($this->createUser([
       'administer entity_test content',
-      'administer taxonomy',
+      'administer media',
     ]));
   }
 
@@ -91,15 +91,15 @@ class WidgetTest extends BrowserTestBase {
     $this->assertSession()
       ->fieldExists('field_test_wrapper[entity_reference_actions][options]');
 
-    $this->assertTrue($this->term->isPublished());
+    $this->assertTrue($this->media->isPublished());
 
     $edit = [
-      'field_test_wrapper[entity_reference_actions][options]' => 'taxonomy_term_unpublish_action',
+      'field_test_wrapper[entity_reference_actions][options]' => 'media_unpublish_action',
     ];
     $this->drupalPostForm('/entity_test/manage/1/edit', $edit, 'field_test_button');
 
-    $this->term = Term::load($this->term->id());
-    $this->assertFalse($this->term->isPublished());
+    $this->media = Media::load($this->media->id());
+    $this->assertFalse($this->media->isPublished());
 
     $this->getSession()->getPage()->pressButton('Save');
     $entity = EntityTest::load(1);
@@ -116,7 +116,30 @@ class WidgetTest extends BrowserTestBase {
       ['entity_reference_autocomplete'],
       ['options_select'],
       ['options_buttons'],
+      ['media_library_widget'],
     ];
+  }
+
+  /**
+   * Test an action with confirmation page.
+   */
+  public function testConfirmationAction() {
+    /** @var \Drupal\Core\Entity\EntityDisplayRepositoryInterface $display_repository */
+    $display_repository = \Drupal::service('entity_display.repository');
+    $display_repository->getFormDisplay('entity_test', 'entity_test')
+      ->setComponent('field_test', ['type' => 'media_library_widget'])
+      ->save();
+
+    $edit = [
+      'field_test_wrapper[entity_reference_actions][options]' => 'media_delete_action',
+    ];
+    $this->drupalPostForm('/entity_test/manage/1/edit', $edit, 'field_test_button');
+
+    $this->drupalPostForm('/media/delete?destination=/entity_test/manage/1/edit', [], 'Delete');
+
+    $this->assertSession()->pageTextContains('Deleted 1 item');
+
+    $this->assertEmpty(Media::load($this->media->id()));
   }
 
 }
