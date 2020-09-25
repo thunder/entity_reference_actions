@@ -95,7 +95,7 @@ class ActionForm implements ContainerInjectionInterface {
       return;
     }
 
-    $form_state->set('entity_reference_' . $field_definition->getName(), $context['items']);
+    $context['widget']::setWidgetState($element['#parents'], $field_definition->getName(), $form_state, $context);
 
     $options = [];
     foreach ($actions as $id => $action) {
@@ -146,7 +146,7 @@ class ActionForm implements ContainerInjectionInterface {
     $widget = $form_display->getRenderer($field_name);
 
     /** @var \Drupal\Core\Field\FieldItemListInterface $items */
-    $items = $form_state->get('entity_reference_' . $field_name);
+    $items = $widget::getWidgetState($form[$field_name]['#parents'], $field_name, $form_state)['items'];
 
     $widget->extractFormValues($items, $form, $form_state);
 
