@@ -1,0 +1,19 @@
+{
+    "name": "drupal/entity_reference_actions",
+    "description": "Provide an extension for entity reference fields to execute actions on the referenced items.",
+    "type": "drupal-module",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "Christian Fritsch",
+            "email": "christian.fritsch@burda.com"
+        }
+    ],
+    "extra": {
+        "patches": {
+            "drupal/core": {
+                "No hook alter to override Field Widget wrappers created by WidgetBase::form": "https://www.drupal.org/files/issues/2018-06-04/2872162-field-widget-hook-10.patch"
+            }
+        }
+    }
+}

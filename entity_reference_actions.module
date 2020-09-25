@@ -1,0 +1,21 @@
+<?php
+
+/**
+ * @file
+ * Entity reference actions module hooks.
+ */
+
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\entity_reference_actions\Form\ActionForm;
+
+/**
+ * Implements hook_field_widget_form_alter().
+ */
+function entity_reference_actions_field_widget_form_container_alter(&$element, FormStateInterface $form_state, $context) {
+  /** @var \Drupal\Core\Field\FieldDefinitionInterface $field_definition */
+  $field_definition = $context['items']->getFieldDefinition();
+
+  if ($field_definition->getType() === 'entity_reference') {
+    \Drupal::classResolver(ActionForm::class)->formAlter($element, $form_state, $context);
+  }
+}
