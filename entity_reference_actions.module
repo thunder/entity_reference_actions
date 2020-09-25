@@ -16,6 +16,6 @@ function entity_reference_actions_field_widget_form_container_alter(&$element, F
   $field_definition = $context['items']->getFieldDefinition();
 
   if ($field_definition->getType() === 'entity_reference') {
-    \Drupal::classResolver(ActionForm::class)->buildForm($element, $form_state, $context);
+    \Drupal::classResolver(ActionForm::class)->formAlter($element, $form_state, $context);
   }
 }

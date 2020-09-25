@@ -74,7 +74,7 @@ class ActionForm implements ContainerInjectionInterface {
    * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
    * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
    */
-  public function buildForm(array &$element, FormStateInterface $form_state, array $context) {
+  public function formAlter(array &$element, FormStateInterface $form_state, array $context) {
 
     /** @var \Drupal\Core\Field\FieldItemListInterface $items */
     $items = $context['items'];
@@ -151,34 +151,25 @@ class ActionForm implements ContainerInjectionInterface {
     $widget->extractFormValues($items, $form, $form_state);
 
     if (!empty($items->getValue())) {
-
-      $entities = [];
       $wrapper = $form_state->getValues()[$field_name . '_wrapper'];
 
       $action = $this->entityTypeManager->getStorage('action')
         ->load($wrapper['entity_reference_actions']['options']);
 
-      $field = $this->entityTypeManager->getStorage('field_storage_config')
-        ->load($form_display->getTargetEntityTypeId() . '.' . $field_name);
+      $entities = $this->entityTypeManager->getStorage($items->getSettings()['target_type'])
+        ->loadMultiple(array_column($items->getValue(), 'target_id'));
 
-      $settings = $field->getSettings();
-      foreach ($items->getValue() as $value) {
-
-        $entity = $this->entityTypeManager->getStorage($settings['target_type'])
-          ->load($value['target_id']);
-
-        // Skip execution if the user did not have access.
+      $entities = array_filter($entities, function ($entity) use ($action) {
         if (!$action->getPlugin()->access($entity, $this->currentUser)) {
           $this->messenger->addError($this->t('No access to execute %action on the @entity_type_label %entity_label.', [
             '%action' => $action->label(),
             '@entity_type_label' => $entity->getEntityType()->getLabel(),
             '%entity_label' => $entity->label(),
           ]));
-          continue;
+          return FALSE;
         }
-
-        $entities[] = $entity;
-      }
+        return TRUE;
+      });
 
       $action->execute($entities);
     }
