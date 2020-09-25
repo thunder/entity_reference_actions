@@ -242,10 +242,16 @@ class ActionForm implements ContainerInjectionInterface {
   }
 
   /**
-   * {@inheritdoc}
+   * Build the settings form.
+   *
+   * @param array $form
+   *   The form array.
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The form state object.
+   * @param string $field_name
+   *   The field name.
    */
-  public function buildSettingsForm(&$form, FormStateInterface $form_state, $field_name) {
-
+  public function buildSettingsForm(array &$form, FormStateInterface $form_state, $field_name) {
     $form['enabled'] = [
       '#type' => 'checkbox',
       '#title' => $this->t('Enable Entity Reference Actions'),
@@ -296,6 +302,8 @@ class ActionForm implements ContainerInjectionInterface {
    *
    * @return array
    *   An associative array of operations, suitable for a select element.
+   *
+   * @see \Drupal\views\Plugin\views\field\BulkForm
    */
   protected function getBulkOptions($filtered = TRUE) {
     $options = [];
