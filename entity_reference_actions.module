@@ -18,14 +18,14 @@ function entity_reference_actions_field_widget_form_container_alter(&$element, F
   $field_definition = $context['items']->getFieldDefinition();
 
   if ($field_definition->getType() === 'entity_reference') {
-    $form = \Drupal::classResolver(ActionForm::class);
+    $handler = \Drupal::classResolver(ActionForm::class);
     $entity_type = $field_definition->getSettings()['target_type'];
 
     /** @var \Drupal\Core\Field\WidgetInterface $widget */
     $widget = $context['widget'];
 
-    $form->init($entity_type, $widget->getThirdPartySettings('entity_reference_actions'));
-    $form->formAlter($element, $form_state, $context);
+    $handler->init($entity_type, $widget->getThirdPartySettings('entity_reference_actions'));
+    $handler->formAlter($element, $form_state, $context);
   }
 }
 
@@ -35,11 +35,11 @@ function entity_reference_actions_field_widget_form_container_alter(&$element, F
 function entity_reference_actions_field_widget_third_party_settings_form(WidgetInterface $plugin, FieldDefinitionInterface $field_definition, $form_mode, $form, FormStateInterface $form_state) {
   $element = [];
   if ($field_definition->getType() === 'entity_reference') {
-    $form = \Drupal::classResolver(ActionForm::class);
+    $handler = \Drupal::classResolver(ActionForm::class);
     $entity_type = $field_definition->getSettings()['target_type'];
 
-    $form->init($entity_type, $plugin->getThirdPartySettings('entity_reference_actions'));
-    $form->buildSettingsForm($element, $form_state, $field_definition->getName());
+    $handler->init($entity_type, $plugin->getThirdPartySettings('entity_reference_actions'));
+    $handler->buildSettingsForm($element, $form_state, $field_definition->getName());
   }
   return $element;
 }
