@@ -138,7 +138,7 @@ class WidgetTest extends BrowserTestBase {
     ];
     $this->drupalPostForm('/entity_test/manage/1/edit', $edit, 'field_test_button');
 
-    $this->drupalPostForm('/media/delete?destination=/entity_test/manage/1/edit', [], 'Delete');
+    $this->drupalPostForm('/media/delete', [], 'Delete');
 
     $this->assertSession()->pageTextContains('Deleted 1 item');
 
