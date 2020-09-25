@@ -8,7 +8,7 @@
 use Drupal\Core\Field\FieldDefinitionInterface;
 use Drupal\Core\Field\WidgetInterface;
 use Drupal\Core\Form\FormStateInterface;
-use Drupal\entity_reference_actions\Form\ActionForm;
+use Drupal\entity_reference_actions\EntityReferenceActionsHandler;
 
 /**
  * Implements hook_field_widget_form_alter().
@@ -18,7 +18,7 @@ function entity_reference_actions_field_widget_form_container_alter(&$element, F
   $field_definition = $context['items']->getFieldDefinition();
 
   if ($field_definition->getType() === 'entity_reference') {
-    $handler = \Drupal::classResolver(ActionForm::class);
+    $handler = \Drupal::classResolver(EntityReferenceActionsHandler::class);
     $entity_type = $field_definition->getSettings()['target_type'];
 
     /** @var \Drupal\Core\Field\WidgetInterface $widget */
@@ -35,7 +35,7 @@ function entity_reference_actions_field_widget_form_container_alter(&$element, F
 function entity_reference_actions_field_widget_third_party_settings_form(WidgetInterface $plugin, FieldDefinitionInterface $field_definition, $form_mode, $form, FormStateInterface $form_state) {
   $element = [];
   if ($field_definition->getType() === 'entity_reference') {
-    $handler = \Drupal::classResolver(ActionForm::class);
+    $handler = \Drupal::classResolver(EntityReferenceActionsHandler::class);
     $entity_type = $field_definition->getSettings()['target_type'];
 
     $handler->init($entity_type, $plugin->getThirdPartySettings('entity_reference_actions'));
