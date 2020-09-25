@@ -156,8 +156,10 @@ class ActionForm implements ContainerInjectionInterface {
       $action = $this->entityTypeManager->getStorage('action')
         ->load($wrapper['entity_reference_actions']['options']);
 
+      $ids = array_filter(array_column($items->getValue(), 'target_id'));
+
       $entities = $this->entityTypeManager->getStorage($items->getSettings()['target_type'])
-        ->loadMultiple(array_column($items->getValue(), 'target_id'));
+        ->loadMultiple($ids);
 
       $entities = array_filter($entities, function ($entity) use ($action) {
         if (!$action->getPlugin()->access($entity, $this->currentUser)) {
