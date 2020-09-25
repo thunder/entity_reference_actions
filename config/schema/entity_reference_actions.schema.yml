@@ -1,0 +1,23 @@
+field.widget.third_party.entity_reference_actions:
+  type: mapping
+  label: 'Entity Reference Actions third party widget settings'
+  mapping:
+    enabled:
+      type: boolean
+      label: 'Determines if it is active'
+    options:
+      type: mapping
+      label: 'Entity Reference Actions options'
+      mapping:
+        action_title:
+          type: label
+          label: 'Action title'
+        include_exclude:
+          type: string
+          label: 'Available actions'
+        selected_actions:
+          type: sequence
+          label: 'Available actions'
+          sequence:
+            type: string
+            label: 'Action'

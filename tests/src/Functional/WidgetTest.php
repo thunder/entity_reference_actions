@@ -86,18 +86,21 @@ class WidgetTest extends BrowserTestBase {
     /** @var \Drupal\Core\Entity\EntityDisplayRepositoryInterface $display_repository */
     $display_repository = \Drupal::service('entity_display.repository');
     $display_repository->getFormDisplay('entity_test', 'entity_test')
-      ->setComponent('field_test', ['type' => $widget])
+      ->setComponent('field_test', [
+        'type' => $widget,
+        'third_party_settings' => ['entity_reference_actions' => ['enabled' => TRUE]],
+      ])
       ->save();
 
     $this->drupalGet('/entity_test/manage/1/edit');
 
     $this->assertSession()
-      ->fieldExists('field_test_wrapper[entity_reference_actions][options]');
+      ->fieldExists('field_test_wrapper[entity_reference_actions][action]');
 
     $this->assertTrue($this->media->isPublished());
 
     $edit = [
-      'field_test_wrapper[entity_reference_actions][options]' => 'media_unpublish_action',
+      'field_test_wrapper[entity_reference_actions][action]' => 'media_unpublish_action',
     ];
     $this->drupalPostForm('/entity_test/manage/1/edit', $edit, 'field_test_button');
 
@@ -130,11 +133,14 @@ class WidgetTest extends BrowserTestBase {
     /** @var \Drupal\Core\Entity\EntityDisplayRepositoryInterface $display_repository */
     $display_repository = \Drupal::service('entity_display.repository');
     $display_repository->getFormDisplay('entity_test', 'entity_test')
-      ->setComponent('field_test', ['type' => 'media_library_widget'])
+      ->setComponent('field_test', [
+        'type' => 'media_library_widget',
+        'third_party_settings' => ['entity_reference_actions' => ['enabled' => TRUE]],
+      ])
       ->save();
 
     $edit = [
-      'field_test_wrapper[entity_reference_actions][options]' => 'media_delete_action',
+      'field_test_wrapper[entity_reference_actions][action]' => 'media_delete_action',
     ];
     $this->drupalPostForm('/entity_test/manage/1/edit', $edit, 'field_test_button');
 

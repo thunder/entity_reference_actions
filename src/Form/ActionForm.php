@@ -2,6 +2,7 @@
 
 namespace Drupal\entity_reference_actions\Form;
 
+use Drupal\Component\Utility\NestedArray;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\DependencyInjection\DependencySerializationTrait;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
@@ -50,6 +51,20 @@ class ActionForm implements ContainerInjectionInterface {
   protected $request;
 
   /**
+   * All available options for this entity_type.
+   *
+   * @var array
+   */
+  protected $actions = [];
+
+  /**
+   * Third party settings for this form.
+   *
+   * @var array
+   */
+  protected $settings = [];
+
+  /**
    * ActionForm constructor.
    *
    * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entityTypeManager
@@ -76,6 +91,36 @@ class ActionForm implements ContainerInjectionInterface {
   }
 
   /**
+   * Initialize the form.
+   *
+   * @param string $entity_type
+   *   Entity type of this field.
+   * @param mixed[] $settings
+   *   Third party settings.
+   *
+   * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
+   * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
+   */
+  public function init($entity_type, array $settings) {
+    $actionStorage = $this->entityTypeManager->getStorage('action');
+    $this->actions = array_filter($actionStorage->loadMultiple(), function ($action) use ($entity_type) {
+      return $action->getType() == $entity_type;
+    });
+
+    $this->settings = NestedArray::mergeDeepArray([
+      [
+        'enabled' => FALSE,
+        'options' => [
+          'action_title' => $this->t('Action'),
+          'include_exclude' => 'exclude',
+          'selected_actions' => [],
+        ],
+      ],
+      $settings,
+    ]);
+  }
+
+  /**
    * Build the form elements.
    *
    * @param array $element
@@ -84,37 +129,22 @@ class ActionForm implements ContainerInjectionInterface {
    *   The form state.
    * @param array $context
    *   The context of this form.
-   *
-   * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
-   * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
    */
   public function formAlter(array &$element, FormStateInterface $form_state, array $context) {
 
     /** @var \Drupal\Core\Field\FieldItemListInterface $items */
     $items = $context['items'];
-    if ($items->isEmpty()) {
+    if ($items->isEmpty() || !$this->settings['enabled']) {
       return;
     }
 
     $field_definition = $items->getFieldDefinition();
 
-    $entity_type = $field_definition->getSettings()['target_type'];
-
-    $actionStorage = $this->entityTypeManager->getStorage('action');
-    $actions = array_filter($actionStorage->loadMultiple(), function ($action) use ($entity_type) {
-      return $action->getType() == $entity_type;
-    });
-
-    if (empty($actions)) {
+    if (empty($this->getBulkOptions())) {
       return;
     }
 
     $context['widget']::setWidgetState($element['#parents'], $field_definition->getName(), $form_state, $context);
-
-    $options = [];
-    foreach ($actions as $id => $action) {
-      $options[$id] = $action->label();
-    }
 
     $element += ['#tree' => TRUE];
 
@@ -122,10 +152,10 @@ class ActionForm implements ContainerInjectionInterface {
       '#type' => 'container',
     ];
 
-    $element['entity_reference_actions']['options'] = [
+    $element['entity_reference_actions']['action'] = [
       '#type' => 'select',
-      '#title' => $this->t('Available actions'),
-      '#options' => $options,
+      '#title' => $this->settings['options']['action_title'],
+      '#options' => $this->getBulkOptions(),
     ];
 
     $element['entity_reference_actions']['submit'] = [
@@ -168,7 +198,7 @@ class ActionForm implements ContainerInjectionInterface {
       $wrapper = $form_state->getValues()[$field_name . '_wrapper'];
 
       $action = $this->entityTypeManager->getStorage('action')
-        ->load($wrapper['entity_reference_actions']['options']);
+        ->load($wrapper['entity_reference_actions']['action']);
 
       $ids = array_filter(array_column($items->getValue(), 'target_id'));
 
@@ -209,7 +239,86 @@ class ActionForm implements ContainerInjectionInterface {
         $form_state->disableRedirect();
       }
     }
+  }
 
+  /**
+   * {@inheritdoc}
+   */
+  public function buildSettingsForm(&$form, FormStateInterface $form_state, $field_name) {
+
+    $form['enabled'] = [
+      '#type' => 'checkbox',
+      '#title' => $this->t('Enable Entity Reference Actions'),
+      '#default_value' => $this->settings['enabled'],
+    ];
+
+    $form['options'] = [
+      '#type' => 'fieldset',
+      '#title' => $this->t('Entity Reference Actions settings'),
+      '#states' => [
+        'visible' => [
+          ':input[name="fields[' . $field_name . '][settings_edit_form][third_party_settings][entity_reference_actions][enabled]"]' => [
+            'checked' => TRUE,
+          ],
+        ],
+      ],
+    ];
+
+    $form['options']['action_title'] = [
+      '#type' => 'textfield',
+      '#title' => $this->t('Action title'),
+      '#default_value' => $this->settings['options']['action_title'],
+      '#description' => $this->t('The title shown above the actions dropdown.'),
+    ];
+
+    $form['options']['include_exclude'] = [
+      '#type' => 'radios',
+      '#title' => $this->t('Available actions'),
+      '#options' => [
+        'exclude' => $this->t('All actions, except selected'),
+        'include' => $this->t('Only selected actions'),
+      ],
+      '#default_value' => $this->settings['options']['include_exclude'],
+    ];
+    $form['options']['selected_actions'] = [
+      '#type' => 'checkboxes',
+      '#title' => $this->t('Selected actions'),
+      '#options' => $this->getBulkOptions(FALSE),
+      '#default_value' => $this->settings['options']['selected_actions'],
+    ];
+  }
+
+  /**
+   * Returns the available operations for this form.
+   *
+   * @param bool $filtered
+   *   (optional) Whether to filter actions to selected actions.
+   *
+   * @return array
+   *   An associative array of operations, suitable for a select element.
+   */
+  protected function getBulkOptions($filtered = TRUE) {
+    $options = [];
+    // Filter the action list.
+    foreach ($this->actions as $id => $action) {
+      if ($filtered) {
+        $in_selected = in_array($id, array_filter($this->settings['options']['selected_actions']));
+        // If the field is configured to include only the selected actions,
+        // skip actions that were not selected.
+        if (($this->settings['options']['include_exclude'] == 'include') && !$in_selected) {
+          continue;
+        }
+        // Otherwise, if the field is configured to exclude the selected
+        // actions, skip actions that were selected.
+        elseif (($this->settings['options']['include_exclude'] == 'exclude') && $in_selected) {
+          continue;
+        }
+      }
+
+      $options[$id] = $action->label();
+    }
+
+    return $options;
   }
 
 }
