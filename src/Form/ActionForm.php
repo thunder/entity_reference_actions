@@ -7,10 +7,11 @@ use Drupal\Core\DependencyInjection\DependencySerializationTrait;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Messenger\MessengerInterface;
-use Drupal\Core\Routing\RedirectDestinationTrait;
 use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
+use Drupal\Core\Url;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
  * Provides the form functions to call actions on referenced entities.
@@ -19,7 +20,6 @@ class ActionForm implements ContainerInjectionInterface {
 
   use DependencySerializationTrait;
   use StringTranslationTrait;
-  use RedirectDestinationTrait;
 
   /**
    * The entity type manager service.
@@ -43,6 +43,13 @@ class ActionForm implements ContainerInjectionInterface {
   protected $messenger;
 
   /**
+   * The current request.
+   *
+   * @var \Symfony\Component\HttpFoundation\Request
+   */
+  protected $request;
+
+  /**
    * ActionForm constructor.
    *
    * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entityTypeManager
@@ -51,18 +58,21 @@ class ActionForm implements ContainerInjectionInterface {
    *   The current user.
    * @param \Drupal\Core\Messenger\MessengerInterface $messenger
    *   The messenger service.
+   * @param \Symfony\Component\HttpFoundation\RequestStack $requestStack
+   *   The request stack.
    */
-  public function __construct(EntityTypeManagerInterface $entityTypeManager, AccountProxyInterface $currentUser, MessengerInterface $messenger) {
+  public function __construct(EntityTypeManagerInterface $entityTypeManager, AccountProxyInterface $currentUser, MessengerInterface $messenger, RequestStack $requestStack) {
     $this->entityTypeManager = $entityTypeManager;
     $this->currentUser = $currentUser;
     $this->messenger = $messenger;
+    $this->request = $requestStack->getCurrentRequest();
   }
 
   /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container) {
-    return new static($container->get('entity_type.manager'), $container->get('current_user'), $container->get('messenger'));
+    return new static($container->get('entity_type.manager'), $container->get('current_user'), $container->get('messenger'), $container->get('request_stack'));
   }
 
   /**
@@ -181,9 +191,13 @@ class ActionForm implements ContainerInjectionInterface {
 
       $operation_definition = $action->getPluginDefinition();
       if (!empty($operation_definition['confirm_form_route_name'])) {
+        $url = Url::fromUserInput($this->request->getPathInfo(), ['query' => $this->request->query->all()]);
         $options = [
-          'query' => $this->getDestinationArray(),
+          'query' => ['destination' => $url->toString()],
         ];
+        if ($this->request->query->has('destination')) {
+          $this->request->query->remove('destination');
+        }
         $form_state->setRedirect($operation_definition['confirm_form_route_name'], [], $options);
       }
       else {
@@ -192,6 +206,7 @@ class ActionForm implements ContainerInjectionInterface {
         $this->messenger->addStatus($this->formatPlural(count($entities), '%action was applied to @count item.', '%action was applied to @count items.', [
           '%action' => $action->label(),
         ]));
+        $form_state->disableRedirect();
       }
     }
 
