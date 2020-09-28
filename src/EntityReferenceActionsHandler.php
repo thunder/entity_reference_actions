@@ -1,6 +1,6 @@
 <?php
 
-namespace Drupal\entity_reference_actions\Form;
+namespace Drupal\entity_reference_actions;
 
 use Drupal\Component\Utility\NestedArray;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
@@ -17,7 +17,7 @@ use Symfony\Component\HttpFoundation\RequestStack;
 /**
  * Provides the form functions to call actions on referenced entities.
  */
-class ActionForm implements ContainerInjectionInterface {
+class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
   use DependencySerializationTrait;
   use StringTranslationTrait;
@@ -65,7 +65,7 @@ class ActionForm implements ContainerInjectionInterface {
   protected $settings = [];
 
   /**
-   * ActionForm constructor.
+   * EntityReferenceActionsHandler constructor.
    *
    * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entityTypeManager
    *   The entity type manager service.
