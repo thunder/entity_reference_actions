@@ -65,7 +65,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
   protected $settings = [];
 
   /**
-   * ActionForm constructor.
+   * EntityReferenceActionsHandler constructor.
    *
    * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entityTypeManager
    *   The entity type manager service.
