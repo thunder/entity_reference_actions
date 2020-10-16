@@ -65,6 +65,13 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
   protected $settings = [];
 
   /**
+   * The entity type ID.
+   *
+   * @var string
+   */
+  protected $entityTypeId;
+
+  /**
    * EntityReferenceActionsHandler constructor.
    *
    * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entityTypeManager
@@ -93,7 +100,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
   /**
    * Initialize the form.
    *
-   * @param string $entity_type
+   * @param string $entity_type_id
    *   Entity type of this field.
    * @param mixed[] $settings
    *   Third party settings.
@@ -101,10 +108,11 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
    * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
    * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
    */
-  public function init($entity_type, array $settings) {
+  public function init($entity_type_id, array $settings) {
+    $this->entityTypeId = $entity_type_id;
     $actionStorage = $this->entityTypeManager->getStorage('action');
-    $this->actions = array_filter($actionStorage->loadMultiple(), function ($action) use ($entity_type) {
-      return $action->getType() == $entity_type;
+    $this->actions = array_filter($actionStorage->loadMultiple(), function ($action) {
+      return $action->getType() == $this->entityTypeId;
     });
 
     $this->settings = NestedArray::mergeDeepArray([
@@ -146,25 +154,20 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
     $context['widget']::setWidgetState($element['#parents'], $field_definition->getName(), $form_state, $context);
 
-    $element += ['#tree' => TRUE];
-
     $element['entity_reference_actions'] = [
-      '#type' => 'container',
+      '#type' => 'simple_actions',
     ];
 
-    $element['entity_reference_actions']['action'] = [
-      '#type' => 'select',
-      '#title' => $this->settings['options']['action_title'],
-      '#options' => $this->getBulkOptions(),
-    ];
-
-    $element['entity_reference_actions']['submit'] = [
-      '#type' => 'submit',
-      '#name' => $field_definition->getName() . '_button',
-      '#value' => $this->t('Apply to referenced items'),
-      '#submit' => [[$this, 'submitForm']],
-    ];
-
+    foreach ($this->getBulkOptions() as $id => $label) {
+      // Add another option to go to the AMP page after saving.
+      $element['entity_reference_actions'][$id] = [
+        '#type' => 'submit',
+        '#name' => $field_definition->getName() . '_' . $id . '_button',
+        '#value' => $label,
+        '#submit' => [[$this, 'submitForm']],
+        '#dropbutton' => "bulk_edit",
+      ];
+    }
   }
 
   /**
@@ -195,10 +198,9 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
     $widget->extractFormValues($items, $form, $form_state);
 
     if (!empty($items->getValue())) {
-      $wrapper = $form_state->getValues()[$field_name . '_wrapper'];
 
       $action = $this->entityTypeManager->getStorage('action')
-        ->load($wrapper['entity_reference_actions']['action']);
+        ->load(end($button['#array_parents']));
 
       $ids = array_filter(array_column($items->getValue(), 'target_id'));
 
@@ -307,7 +309,9 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
    */
   protected function getBulkOptions($filtered = TRUE) {
     $options = [];
+    $entity_type = $this->entityTypeManager->getDefinition($this->entityTypeId);
     // Filter the action list.
+    /** @var \Drupal\system\ActionConfigEntityInterface $action */
     foreach ($this->actions as $id => $action) {
       if ($filtered) {
         $in_selected = in_array($id, array_filter($this->settings['options']['selected_actions']));
@@ -322,8 +326,11 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
           continue;
         }
       }
-
-      $options[$id] = $action->label();
+      $label = $action->label();
+      if (isset($action->getPlugin()->getPluginDefinition()['action_label'])) {
+        $label = sprintf('%s all %s', $action->getPlugin()->getPluginDefinition()['action_label'], $entity_type->getPluralLabel());
+      }
+      $options[$id] = $label;
     }
 
     return $options;
