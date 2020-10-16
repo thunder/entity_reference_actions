@@ -148,25 +148,24 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
     $field_definition = $items->getFieldDefinition();
 
-    if (empty($this->getBulkOptions())) {
-      return;
-    }
-
     $context['widget']::setWidgetState($element['#parents'], $field_definition->getName(), $form_state, $context);
 
     $element['entity_reference_actions'] = [
       '#type' => 'simple_actions',
     ];
 
-    foreach ($this->getBulkOptions() as $id => $label) {
+    $bulk_options = $this->getBulkOptions();
+    foreach ($bulk_options as $id => $label) {
       // Add another option to go to the AMP page after saving.
       $element['entity_reference_actions'][$id] = [
         '#type' => 'submit',
         '#name' => $field_definition->getName() . '_' . $id . '_button',
         '#value' => $label,
         '#submit' => [[$this, 'submitForm']],
-        '#dropbutton' => "bulk_edit",
       ];
+      if (count($bulk_options) > 1) {
+        $element['entity_reference_actions'][$id]['#dropbutton'] = 'bulk_edit';
+      }
     }
   }
 
