@@ -6,11 +6,11 @@ use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Render\Element\Actions;
 
 /**
- * Action element with primary classes.
+ * Action element without primary classes.
  *
  * @RenderElement("simple_actions")
  */
-class SimpleAction extends Actions {
+class SimpleActions extends Actions {
 
   /**
    * {@inheritdoc}
