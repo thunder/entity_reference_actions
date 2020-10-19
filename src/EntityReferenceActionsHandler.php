@@ -3,6 +3,7 @@
 namespace Drupal\entity_reference_actions;
 
 use Drupal\Component\Utility\NestedArray;
+use Drupal\Core\Batch\BatchBuilder;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\DependencyInjection\DependencySerializationTrait;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
@@ -217,26 +218,36 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
         return TRUE;
       });
 
-      $action->execute($entities);
+      $url = Url::fromUserInput($this->request->getPathInfo(), ['query' => $this->request->query->all()]);
+      $options = [
+        'query' => ['destination' => $url->toString()],
+      ];
+      if ($this->request->query->has('destination')) {
+        $this->request->query->remove('destination');
+      }
 
       $operation_definition = $action->getPluginDefinition();
       if (!empty($operation_definition['confirm_form_route_name'])) {
-        $url = Url::fromUserInput($this->request->getPathInfo(), ['query' => $this->request->query->all()]);
-        $options = [
-          'query' => ['destination' => $url->toString()],
-        ];
-        if ($this->request->query->has('destination')) {
-          $this->request->query->remove('destination');
-        }
+        $action->execute($entities);
         $form_state->setRedirect($operation_definition['confirm_form_route_name'], [], $options);
       }
       else {
+        $batch_builder = (new BatchBuilder())
+          ->setTitle($this->formatPlural(count($entities), 'Apply %action action to @count item.', 'Apply %action action to @count items.', [
+            '%action' => $action->label(),
+          ]));
+        foreach ($entities as $entity) {
+          $batch_builder->addOperation([$action, 'execute'], [[$entity]]);
+        }
+
+        batch_set($batch_builder->toArray());
+
         // Don't display the message unless there are some elements affected and
         // there is no confirmation form.
         $this->messenger->addStatus($this->formatPlural(count($entities), '%action was applied to @count item.', '%action was applied to @count items.', [
           '%action' => $action->label(),
         ]));
-        $form_state->disableRedirect();
+        $form_state->setRedirectUrl($url);
       }
     }
   }
