@@ -45,11 +45,11 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
   protected $messenger;
 
   /**
-   * The current request.
+   * The request stack.
    *
-   * @var \Symfony\Component\HttpFoundation\Request
+   * @var \Symfony\Component\HttpFoundation\RequestStack
    */
-  protected $request;
+  protected $requestStack;
 
   /**
    * All available options for this entity_type.
@@ -81,7 +81,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
     $this->entityTypeManager = $entityTypeManager;
     $this->currentUser = $currentUser;
     $this->messenger = $messenger;
-    $this->request = $requestStack->getCurrentRequest();
+    $this->requestStack = $requestStack;
   }
 
   /**
@@ -218,12 +218,13 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
         return TRUE;
       });
 
-      $url = Url::fromUserInput($this->request->getPathInfo(), ['query' => $this->request->query->all()]);
+      $request = $this->requestStack->getCurrentRequest();
+      $url = Url::fromUserInput($request->getPathInfo(), ['query' => $request->query->all()]);
       $options = [
         'query' => ['destination' => $url->toString()],
       ];
-      if ($this->request->query->has('destination')) {
-        $this->request->query->remove('destination');
+      if ($request->query->has('destination')) {
+        $request->query->remove('destination');
       }
 
       $operation_definition = $action->getPluginDefinition();
