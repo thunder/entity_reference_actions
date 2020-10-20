@@ -228,7 +228,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
       $operation_definition = $action->getPluginDefinition();
       if (!empty($operation_definition['confirm_form_route_name'])) {
-        $action->execute($entities);
+        $action->getPlugin()->executeMultiple($entities);
         $form_state->setRedirect($operation_definition['confirm_form_route_name'], [], $options);
       }
       else {
@@ -237,7 +237,11 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
             '%action' => $action->label(),
           ]));
         foreach ($entities as $entity) {
-          $batch_builder->addOperation([$action, 'execute'], [[$entity]]);
+          $batch_builder->addOperation([__CLASS__, 'batchCallback'], [
+            $entity->id(),
+            $entity->getEntityTypeId(),
+            $action->id(),
+          ]);
         }
 
         batch_set($batch_builder->toArray());
@@ -250,6 +254,30 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
         $form_state->setRedirectUrl($url);
       }
     }
+  }
+
+  /**
+   * Call action in batch.
+   *
+   * @param int $entity_id
+   *   The entity ID.
+   * @param string $entity_type_id
+   *   The entity type ID.
+   * @param string $action_id
+   *   The action ID.
+   *
+   * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
+   * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
+   */
+  public static function batchCallback($entity_id, $entity_type_id, $action_id) {
+    $entity_type_manager = \Drupal::entityTypeManager();
+
+    /** @var \Drupal\Core\Action\ActionInterface $action */
+    $action = $entity_type_manager->getStorage('action')->load($action_id);
+
+    $entity = $entity_type_manager->getStorage($entity_type_id)->load($entity_id);
+
+    $action->getPlugin()->executeMultiple([$entity]);
   }
 
   /**
