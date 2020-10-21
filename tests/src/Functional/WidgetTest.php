@@ -94,15 +94,9 @@ class WidgetTest extends BrowserTestBase {
 
     $this->drupalGet('/entity_test/manage/1/edit');
 
-    $this->assertSession()
-      ->fieldExists('field_test_wrapper[entity_reference_actions][action]');
-
     $this->assertTrue($this->media->isPublished());
 
-    $edit = [
-      'field_test_wrapper[entity_reference_actions][action]' => 'media_unpublish_action',
-    ];
-    $this->drupalPostForm('/entity_test/manage/1/edit', $edit, 'field_test_button');
+    $this->drupalPostForm('/entity_test/manage/1/edit', [], 'Unpublish all media items');
 
     $this->media = Media::load($this->media->id());
     $this->assertFalse($this->media->isPublished());
@@ -139,10 +133,7 @@ class WidgetTest extends BrowserTestBase {
       ])
       ->save();
 
-    $edit = [
-      'field_test_wrapper[entity_reference_actions][action]' => 'media_delete_action',
-    ];
-    $this->drupalPostForm('/entity_test/manage/1/edit', $edit, 'field_test_button');
+    $this->drupalPostForm('/entity_test/manage/1/edit', [], 'Delete all media items');
 
     $this->drupalPostForm('/media/delete', [], 'Delete');
 
