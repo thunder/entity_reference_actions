@@ -3,6 +3,7 @@
 namespace Drupal\entity_reference_actions;
 
 use Drupal\Component\Utility\NestedArray;
+use Drupal\Core\Batch\BatchBuilder;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\DependencyInjection\DependencySerializationTrait;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
@@ -44,11 +45,11 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
   protected $messenger;
 
   /**
-   * The current request.
+   * The request stack.
    *
-   * @var \Symfony\Component\HttpFoundation\Request
+   * @var \Symfony\Component\HttpFoundation\RequestStack
    */
-  protected $request;
+  protected $requestStack;
 
   /**
    * All available options for this entity_type.
@@ -87,7 +88,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
     $this->entityTypeManager = $entityTypeManager;
     $this->currentUser = $currentUser;
     $this->messenger = $messenger;
-    $this->request = $requestStack->getCurrentRequest();
+    $this->requestStack = $requestStack;
   }
 
   /**
@@ -218,28 +219,67 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
         return TRUE;
       });
 
-      $action->execute($entities);
+      $request = $this->requestStack->getCurrentRequest();
+      $url = Url::fromUserInput($request->getPathInfo(), ['query' => $request->query->all()]);
+      $options = [
+        'query' => ['destination' => $url->toString()],
+      ];
+      if ($request->query->has('destination')) {
+        $request->query->remove('destination');
+      }
 
       $operation_definition = $action->getPluginDefinition();
       if (!empty($operation_definition['confirm_form_route_name'])) {
-        $url = Url::fromUserInput($this->request->getPathInfo(), ['query' => $this->request->query->all()]);
-        $options = [
-          'query' => ['destination' => $url->toString()],
-        ];
-        if ($this->request->query->has('destination')) {
-          $this->request->query->remove('destination');
-        }
+        $action->getPlugin()->executeMultiple($entities);
         $form_state->setRedirect($operation_definition['confirm_form_route_name'], [], $options);
       }
       else {
+        $batch_builder = (new BatchBuilder())
+          ->setTitle($this->formatPlural(count($entities), 'Apply %action action to @count item.', 'Apply %action action to @count items.', [
+            '%action' => $action->label(),
+          ]));
+        foreach ($entities as $entity) {
+          $batch_builder->addOperation([__CLASS__, 'batchCallback'], [
+            $entity->id(),
+            $entity->getEntityTypeId(),
+            $action->id(),
+          ]);
+        }
+
+        batch_set($batch_builder->toArray());
+
         // Don't display the message unless there are some elements affected and
         // there is no confirmation form.
         $this->messenger->addStatus($this->formatPlural(count($entities), '%action was applied to @count item.', '%action was applied to @count items.', [
           '%action' => $action->label(),
         ]));
-        $form_state->disableRedirect();
+        $form_state->setRedirectUrl($url);
       }
     }
+  }
+
+  /**
+   * Call action in batch.
+   *
+   * @param int $entity_id
+   *   The entity ID.
+   * @param string $entity_type_id
+   *   The entity type ID.
+   * @param string $action_id
+   *   The action ID.
+   *
+   * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
+   * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
+   */
+  public static function batchCallback($entity_id, $entity_type_id, $action_id) {
+    $entity_type_manager = \Drupal::entityTypeManager();
+
+    /** @var \Drupal\Core\Action\ActionInterface $action */
+    $action = $entity_type_manager->getStorage('action')->load($action_id);
+
+    $entity = $entity_type_manager->getStorage($entity_type_id)->load($entity_id);
+
+    $action->getPlugin()->executeMultiple([$entity]);
   }
 
   /**
