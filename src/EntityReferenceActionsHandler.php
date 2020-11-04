@@ -7,6 +7,7 @@ use Drupal\Core\Batch\BatchBuilder;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\DependencyInjection\DependencySerializationTrait;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
+use Drupal\Core\Field\WidgetBase;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Messenger\MessengerInterface;
 use Drupal\Core\Session\AccountProxyInterface;
@@ -149,7 +150,8 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
     $field_definition = $items->getFieldDefinition();
 
-    $context['widget']::setWidgetState($element['#parents'], $field_definition->getName(), $form_state, $context);
+    $parents = $context['form']['#array_parents'] ?? [];
+    $context['widget']::setWidgetState($parents, $field_definition->getName(), $form_state, $context);
 
     $element['entity_reference_actions'] = [
       '#type' => 'simple_actions',
@@ -184,18 +186,19 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
   public function submitForm(array &$form, FormStateInterface $form_state) {
 
     $button = $form_state->getTriggeringElement();
-    $field_name = reset($button['#array_parents']);
 
-    /** @var \Drupal\Core\Entity\Display\EntityFormDisplayInterface $form_display */
-    $form_display = $form_state->getStorage()['form_display'];
+    $parents = array_slice($button['#array_parents'], 0, -2);
+    $field_name = end($parents);
 
-    /** @var \Drupal\Core\Field\WidgetInterface $widget */
-    $widget = $form_display->getRenderer($field_name);
+    $parents = array_slice($parents, 0, -1);
+    $sub_form = NestedArray::getValue($form, $parents);
+
+    $state = WidgetBase::getWidgetState($parents, $field_name, $form_state);
 
     /** @var \Drupal\Core\Field\FieldItemListInterface $items */
-    $items = $widget::getWidgetState($form[$field_name]['#parents'], $field_name, $form_state)['items'];
+    $items = $state['items'];
 
-    $widget->extractFormValues($items, $form, $form_state);
+    $state['widget']->extractFormValues($items, $sub_form, $form_state);
 
     if (!empty($items->getValue())) {
 
