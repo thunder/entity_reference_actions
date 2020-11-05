@@ -149,12 +149,13 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
     }
 
     $field_definition = $items->getFieldDefinition();
+    $field_id = $field_definition->getUniqueIdentifier();
 
-    $parents = $context['form']['#array_parents'] ?? [];
-    $context['widget']::setWidgetState($parents, $field_definition->getName(), $form_state, $context);
+    $context['widget']::setWidgetState([], $field_id, $form_state, $context);
 
     $element['entity_reference_actions'] = [
       '#type' => 'simple_actions',
+      '#field_id' => $field_id,
     ];
 
     $bulk_options = $this->getBulkOptions();
@@ -193,7 +194,9 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
     $parents = array_slice($parents, 0, -1);
     $sub_form = NestedArray::getValue($form, $parents);
 
-    $state = WidgetBase::getWidgetState($parents, $field_name, $form_state);
+    $field_id = $sub_form[$field_name]['entity_reference_actions']['#field_id'];
+
+    $state = WidgetBase::getWidgetState([], $field_id, $form_state);
 
     /** @var \Drupal\Core\Field\FieldItemListInterface $items */
     $items = $state['items'];
