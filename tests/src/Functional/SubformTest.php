@@ -65,8 +65,8 @@ class SubformTest extends BrowserTestBase {
 
     EntityFormMode::create([
       'id' => 'entity_test.inline',
-      'targetEntityType' => 'entity_test'],
-    )->save();
+      'targetEntityType' => 'entity_test',
+    ])->save();
     $entity_form_display = EntityFormDisplay::create([
       'targetEntityType' => 'entity_test',
       'bundle' => 'entity_test',
