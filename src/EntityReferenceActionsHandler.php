@@ -3,11 +3,11 @@
 namespace Drupal\entity_reference_actions;
 
 use Drupal\Component\Utility\NestedArray;
+use Drupal\Component\Uuid\UuidInterface;
 use Drupal\Core\Batch\BatchBuilder;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\DependencyInjection\DependencySerializationTrait;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
-use Drupal\Core\Field\WidgetBase;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Messenger\MessengerInterface;
 use Drupal\Core\Session\AccountProxyInterface;
@@ -53,6 +53,13 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
   protected $requestStack;
 
   /**
+   * The UUID service.
+   *
+   * @var \Drupal\Component\Uuid\UuidInterface
+   */
+  protected $uuid;
+
+  /**
    * All available options for this entity_type.
    *
    * @var array
@@ -85,18 +92,19 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
    * @param \Symfony\Component\HttpFoundation\RequestStack $requestStack
    *   The request stack.
    */
-  public function __construct(EntityTypeManagerInterface $entityTypeManager, AccountProxyInterface $currentUser, MessengerInterface $messenger, RequestStack $requestStack) {
+  public function __construct(EntityTypeManagerInterface $entityTypeManager, AccountProxyInterface $currentUser, MessengerInterface $messenger, RequestStack $requestStack, UuidInterface $uuid) {
     $this->entityTypeManager = $entityTypeManager;
     $this->currentUser = $currentUser;
     $this->messenger = $messenger;
     $this->requestStack = $requestStack;
+    $this->uuid = $uuid;
   }
 
   /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container) {
-    return new static($container->get('entity_type.manager'), $container->get('current_user'), $container->get('messenger'), $container->get('request_stack'));
+    return new static($container->get('entity_type.manager'), $container->get('current_user'), $container->get('messenger'), $container->get('request_stack'), $container->get('uuid'));
   }
 
   /**
@@ -149,13 +157,14 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
     }
 
     $field_definition = $items->getFieldDefinition();
-    $field_id = $field_definition->getUniqueIdentifier();
 
-    $context['widget']::setWidgetState([], $field_id, $form_state, $context);
+    $uuid = $this->uuid->generate();
+
+    $form_state->set($uuid, $context);
 
     $element['entity_reference_actions'] = [
       '#type' => 'simple_actions',
-      '#field_id' => $field_id,
+      '#uuid' => $uuid,
     ];
 
     $bulk_options = $this->getBulkOptions();
@@ -194,14 +203,14 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
     $parents = array_slice($parents, 0, -1);
     $sub_form = NestedArray::getValue($form, $parents);
 
-    $field_id = $sub_form[$field_name]['entity_reference_actions']['#field_id'];
+    $uuid = $sub_form[$field_name]['entity_reference_actions']['#uuid'];
 
-    $state = WidgetBase::getWidgetState([], $field_id, $form_state);
+    $context = $form_state->get($uuid);
 
     /** @var \Drupal\Core\Field\FieldItemListInterface $items */
-    $items = $state['items'];
+    $items = $context['items'];
 
-    $state['widget']->extractFormValues($items, $sub_form, $form_state);
+    $context['widget']->extractFormValues($items, $sub_form, $form_state);
 
     if (!empty($items->getValue())) {
 
