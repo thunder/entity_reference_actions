@@ -57,7 +57,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
    *
    * @var \Drupal\Component\Uuid\UuidInterface
    */
-  protected $uuid;
+  protected $uuidGenerator;
 
   /**
    * All available options for this entity_type.
@@ -91,13 +91,15 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
    *   The messenger service.
    * @param \Symfony\Component\HttpFoundation\RequestStack $requestStack
    *   The request stack.
+   * @param \Drupal\Component\Uuid\UuidInterface $uuidGenerator
+   *   The UUID generator service.
    */
-  public function __construct(EntityTypeManagerInterface $entityTypeManager, AccountProxyInterface $currentUser, MessengerInterface $messenger, RequestStack $requestStack, UuidInterface $uuid) {
+  public function __construct(EntityTypeManagerInterface $entityTypeManager, AccountProxyInterface $currentUser, MessengerInterface $messenger, RequestStack $requestStack, UuidInterface $uuidGenerator) {
     $this->entityTypeManager = $entityTypeManager;
     $this->currentUser = $currentUser;
     $this->messenger = $messenger;
     $this->requestStack = $requestStack;
-    $this->uuid = $uuid;
+    $this->uuidGenerator = $uuidGenerator;
   }
 
   /**
@@ -158,7 +160,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
     $field_definition = $items->getFieldDefinition();
 
-    $uuid = $this->uuid->generate();
+    $uuid = $this->uuidGenerator->generate();
 
     $form_state->set($uuid, $context);
 
