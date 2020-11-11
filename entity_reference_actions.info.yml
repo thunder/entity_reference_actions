@@ -5,3 +5,5 @@ package: User interface
 core_version_requirement: ^8.8 || ^9
 test_dependencies:
   - inline_entity_form
+  - paragraphs
+  - entity_reference_revisions
