@@ -160,7 +160,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
     $field_definition = $items->getFieldDefinition();
 
-    $uuid = $this->uuidGenerator->generate();
+    $uuid = 'entity_reference_actions-' . $this->uuidGenerator->generate();
 
     $form_state->set($uuid, $context);
 
@@ -203,16 +203,16 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
     $field_name = end($parents);
 
     $parents = array_slice($parents, 0, -1);
-    $sub_form = NestedArray::getValue($form, $parents);
+    $values = NestedArray::getValue($form, $parents);
 
-    $uuid = $sub_form[$field_name]['entity_reference_actions']['#uuid'];
+    $uuid = $values[$field_name]['entity_reference_actions']['#uuid'];
 
     $context = $form_state->get($uuid);
 
     /** @var \Drupal\Core\Field\FieldItemListInterface $items */
     $items = $context['items'];
 
-    $context['widget']->extractFormValues($items, $sub_form, $form_state);
+    $context['widget']->extractFormValues($items, $values, $form_state);
 
     if (!empty($items->getValue())) {
 
