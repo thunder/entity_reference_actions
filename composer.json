@@ -9,6 +9,11 @@
             "email": "christian.fritsch@burda.com"
         }
     ],
+    "require-dev": {
+        "drupal/inline_entity_form": "^1.0",
+        "drupal/paragraphs": "^1.0",
+        "drupal/entity_reference_revisions": "^1.0"
+    },
     "extra": {
         "patches": {
             "drupal/core": {

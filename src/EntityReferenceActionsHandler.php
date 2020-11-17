@@ -3,6 +3,7 @@
 namespace Drupal\entity_reference_actions;
 
 use Drupal\Component\Utility\NestedArray;
+use Drupal\Component\Uuid\UuidInterface;
 use Drupal\Core\Batch\BatchBuilder;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\DependencyInjection\DependencySerializationTrait;
@@ -52,6 +53,13 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
   protected $requestStack;
 
   /**
+   * The UUID service.
+   *
+   * @var \Drupal\Component\Uuid\UuidInterface
+   */
+  protected $uuidGenerator;
+
+  /**
    * All available options for this entity_type.
    *
    * @var array
@@ -83,19 +91,22 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
    *   The messenger service.
    * @param \Symfony\Component\HttpFoundation\RequestStack $requestStack
    *   The request stack.
+   * @param \Drupal\Component\Uuid\UuidInterface $uuidGenerator
+   *   The UUID generator service.
    */
-  public function __construct(EntityTypeManagerInterface $entityTypeManager, AccountProxyInterface $currentUser, MessengerInterface $messenger, RequestStack $requestStack) {
+  public function __construct(EntityTypeManagerInterface $entityTypeManager, AccountProxyInterface $currentUser, MessengerInterface $messenger, RequestStack $requestStack, UuidInterface $uuidGenerator) {
     $this->entityTypeManager = $entityTypeManager;
     $this->currentUser = $currentUser;
     $this->messenger = $messenger;
     $this->requestStack = $requestStack;
+    $this->uuidGenerator = $uuidGenerator;
   }
 
   /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container) {
-    return new static($container->get('entity_type.manager'), $container->get('current_user'), $container->get('messenger'), $container->get('request_stack'));
+    return new static($container->get('entity_type.manager'), $container->get('current_user'), $container->get('messenger'), $container->get('request_stack'), $container->get('uuid'));
   }
 
   /**
@@ -149,10 +160,13 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
     $field_definition = $items->getFieldDefinition();
 
-    $context['widget']::setWidgetState($element['#parents'], $field_definition->getName(), $form_state, $context);
+    $uuid = 'entity_reference_actions-' . $this->uuidGenerator->generate();
+
+    $form_state->set($uuid, $context);
 
     $element['entity_reference_actions'] = [
       '#type' => 'simple_actions',
+      '#uuid' => $uuid,
     ];
 
     $bulk_options = $this->getBulkOptions();
@@ -184,18 +198,22 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
   public function submitForm(array &$form, FormStateInterface $form_state) {
 
     $button = $form_state->getTriggeringElement();
-    $field_name = reset($button['#array_parents']);
 
-    /** @var \Drupal\Core\Entity\Display\EntityFormDisplayInterface $form_display */
-    $form_display = $form_state->getStorage()['form_display'];
+    $parents = array_slice($button['#array_parents'], 0, -2);
+    // The field name we are acting on, deep from the form structure.
+    $field_name = end($parents);
 
-    /** @var \Drupal\Core\Field\WidgetInterface $widget */
-    $widget = $form_display->getRenderer($field_name);
+    $parents = array_slice($parents, 0, -1);
+    $values = NestedArray::getValue($form, $parents);
+
+    $uuid = $values[$field_name]['entity_reference_actions']['#uuid'];
+
+    $context = $form_state->get($uuid);
 
     /** @var \Drupal\Core\Field\FieldItemListInterface $items */
-    $items = $widget::getWidgetState($form[$field_name]['#parents'], $field_name, $form_state)['items'];
+    $items = $context['items'];
 
-    $widget->extractFormValues($items, $form, $form_state);
+    $context['widget']->extractFormValues($items, $values, $form_state);
 
     if (!empty($items->getValue())) {
 
