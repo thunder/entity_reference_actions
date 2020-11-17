@@ -200,6 +200,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
     $button = $form_state->getTriggeringElement();
 
     $parents = array_slice($button['#array_parents'], 0, -2);
+    // The field name we are acting on, deep from the form structure.
     $field_name = end($parents);
 
     $parents = array_slice($parents, 0, -1);
