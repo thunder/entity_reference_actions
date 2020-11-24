@@ -63,6 +63,13 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
   protected $uuidGenerator;
 
   /**
+   * The HTTP kernel service.
+   *
+   * @var \Symfony\Component\HttpKernel\HttpKernelInterface
+   */
+  protected $httpKernel;
+
+  /**
    * All available options for this entity_type.
    *
    * @var array
@@ -96,20 +103,23 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
    *   The request stack.
    * @param \Drupal\Component\Uuid\UuidInterface $uuidGenerator
    *   The UUID generator service.
+   * @param \Symfony\Component\HttpKernel\HttpKernelInterface $httpKernel
+   *   The HTTP kernel service.
    */
-  public function __construct(EntityTypeManagerInterface $entityTypeManager, AccountProxyInterface $currentUser, MessengerInterface $messenger, RequestStack $requestStack, UuidInterface $uuidGenerator) {
+  public function __construct(EntityTypeManagerInterface $entityTypeManager, AccountProxyInterface $currentUser, MessengerInterface $messenger, RequestStack $requestStack, UuidInterface $uuidGenerator, HttpKernelInterface $httpKernel) {
     $this->entityTypeManager = $entityTypeManager;
     $this->currentUser = $currentUser;
     $this->messenger = $messenger;
     $this->requestStack = $requestStack;
     $this->uuidGenerator = $uuidGenerator;
+    $this->httpKernel = $httpKernel;
   }
 
   /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container) {
-    return new static($container->get('entity_type.manager'), $container->get('current_user'), $container->get('messenger'), $container->get('request_stack'), $container->get('uuid'));
+    return new static($container->get('entity_type.manager'), $container->get('current_user'), $container->get('messenger'), $container->get('request_stack'), $container->get('uuid'), $container->get('http_kernel'));
   }
 
   /**
@@ -184,7 +194,8 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
         ],
       ];
       if (count($bulk_options) > 1) {
-        #$element['entity_reference_actions'][$id]['#dropbutton'] = 'bulk_edit';
+        // $element['entity_reference_actions'][$id]['#dropbutton'] =
+        // 'bulk_edit';
       }
     }
   }
@@ -255,14 +266,14 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
           '_drupal_ajax' => 1,
           'dialogOptions' => [
             'width' => 700,
-          ]
+          ],
         ];
         $sub_request = Request::create($dialog_url->getGeneratedUrl(), 'POST', $parameter, [], [], $request->server->all());
         if ($request->getSession()) {
           $sub_request->setSession($request->getSession());
         }
 
-        return \Drupal::service('http_kernel')->handle($sub_request, HttpKernelInterface::SUB_REQUEST);
+        return $this->httpKernel->handle($sub_request, HttpKernelInterface::SUB_REQUEST);
       }
       else {
         $batch_builder = (new BatchBuilder())
