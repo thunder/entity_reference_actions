@@ -261,12 +261,11 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
         return TRUE;
       });
 
-      $request = $this->requestStack->getCurrentRequest();
-
       $operation_definition = $action->getPluginDefinition();
       if (!empty($operation_definition['confirm_form_route_name'])) {
         $action->getPlugin()->executeMultiple($entities);
 
+        $request = $this->requestStack->getCurrentRequest();
         $dialog_url = Url::fromRoute($operation_definition['confirm_form_route_name'], [MainContentViewSubscriber::WRAPPER_FORMAT => 'drupal_modal'])->toString(TRUE);
         $parameter = [
           'ajax_page_state' => $request->request->get('ajax_page_state'),

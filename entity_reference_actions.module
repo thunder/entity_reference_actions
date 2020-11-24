@@ -11,6 +11,7 @@ use Drupal\Core\Ajax\ReplaceCommand;
 use Drupal\Core\EventSubscriber\MainContentViewSubscriber;
 use Drupal\Core\Field\FieldDefinitionInterface;
 use Drupal\Core\Field\WidgetInterface;
+use Drupal\Core\Form\ConfirmFormBase;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\entity_reference_actions\EntityReferenceActionsHandler;
 
@@ -66,26 +67,19 @@ function entity_reference_actions_field_widget_settings_summary_alter(&$summary,
  */
 function entity_reference_actions_form_alter(&$form, FormStateInterface $form_state, $form_id) {
 
-  if ($form_id !== 'bulk_edit_form' && (!empty($form_state->getBuildInfo()['base_form_id']) && $form_state->getBuildInfo()['base_form_id'] !== 'entity_delete_multiple_confirm_form')) {
-    return;
-  }
-
   $is_ajax = FALSE;
   foreach (['drupal_ajax', 'drupal_modal', 'drupal_dialog'] as $wrapper) {
     if (strpos(\Drupal::request()->get(MainContentViewSubscriber::WRAPPER_FORMAT), $wrapper) !== FALSE) {
       $is_ajax = TRUE;
     }
   }
-  if (!$is_ajax) {
+
+  if (!$is_ajax || !($form_state->getFormObject() instanceof ConfirmFormBase)) {
     return;
   }
 
-  if (isset($form['actions']['submit'])) {
-    $form['actions']['submit']['#ajax']['callback'] = 'entity_reference_actions_dialog_ajax_submit';
-  }
-  if (isset($form['actions']['cancel'])) {
-    $form['actions']['cancel']['#attributes']['class'][] = 'dialog-cancel';
-  }
+  $form['actions']['submit']['#ajax']['callback'] = 'entity_reference_actions_dialog_ajax_submit';
+  $form['actions']['cancel']['#attributes']['class'][] = 'dialog-cancel';
 }
 
 /**
