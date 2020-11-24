@@ -195,6 +195,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
       // Add another option to go to the AMP page after saving.
       $element['entity_reference_actions'][$id] = [
         '#type' => 'submit',
+        '#id' => $field_definition->getName() . '_' . $id . '_button',
         '#name' => $field_definition->getName() . '_' . $id . '_button',
         '#value' => $label,
         '#ajax' => [
@@ -202,8 +203,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
         ],
       ];
       if (count($bulk_options) > 1) {
-        // $element['entity_reference_actions'][$id]['#dropbutton'] =
-        // 'bulk_edit';
+        $element['entity_reference_actions'][$id]['#dropbutton'] = 'bulk_edit';
       }
     }
   }

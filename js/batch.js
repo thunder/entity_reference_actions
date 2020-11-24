@@ -29,14 +29,8 @@
               }
               // Unbind dialogButtonsChange.
               $dialog.off('dialogButtonsChange');
-
-
             }
           });
-
-
-
-          //window.location = "".concat(batch.uri, "&op=finished");
         }
       }
 
