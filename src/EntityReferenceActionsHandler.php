@@ -4,11 +4,14 @@ namespace Drupal\entity_reference_actions;
 
 use Drupal\Component\Utility\NestedArray;
 use Drupal\Component\Uuid\UuidInterface;
+use Drupal\Core\Ajax\AjaxResponse;
+use Drupal\Core\Ajax\OpenModalDialogCommand;
 use Drupal\Core\Batch\BatchBuilder;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\DependencyInjection\DependencySerializationTrait;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\EventSubscriber\MainContentViewSubscriber;
+use Drupal\Core\Form\EnforcedResponseException;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Messenger\MessengerInterface;
 use Drupal\Core\Session\AccountProxyInterface;
@@ -180,6 +183,11 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
     $element['entity_reference_actions'] = [
       '#type' => 'simple_actions',
       '#uuid' => $uuid,
+      '#attached' => [
+        'library' => [
+          'core/drupal.dialog.ajax',
+        ],
+      ],
     ];
 
     $bulk_options = $this->getBulkOptions();
@@ -261,7 +269,6 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
         $dialog_url = Url::fromRoute($operation_definition['confirm_form_route_name'], [MainContentViewSubscriber::WRAPPER_FORMAT => 'drupal_modal'])->toString(TRUE);
         $parameter = [
-          'entity_reference_actions_dialog' => TRUE,
           'ajax_page_state' => $request->request->get('ajax_page_state'),
           '_drupal_ajax' => 1,
           'dialogOptions' => [
@@ -279,7 +286,8 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
         $batch_builder = (new BatchBuilder())
           ->setTitle($this->formatPlural(count($entities), 'Apply %action action to @count item.', 'Apply %action action to @count items.', [
             '%action' => $action->label(),
-          ]));
+          ]))
+          ->setFinishCallback([__CLASS__, 'batchFinish']);
         foreach ($entities as $entity) {
           $batch_builder->addOperation([__CLASS__, 'batchCallback'], [
             $entity->id(),
@@ -288,20 +296,47 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
           ]);
         }
 
-        batch_set($batch_builder->toArray());
+        $batch_array = $batch_builder->toArray();
+        batch_set($batch_array);
 
-        // Don't display the message unless there are some elements affected and
-        // there is no confirmation form.
-        $this->messenger->addStatus($this->formatPlural(count($entities), '%action was applied to @count item.', '%action was applied to @count items.', [
-          '%action' => $action->label(),
+        batch_process();
+
+        require_once \Drupal::root() . '/core/includes/batch.inc';
+        $batch_page = _batch_progress_page();
+        $batch_page['#attached']['library'] = ['entity_reference_actions/batch'];
+
+        $ajaxResponse = new AjaxResponse();
+        $ajaxResponse->addCommand(new OpenModalDialogCommand($batch_array['title'], $batch_page, [
+          'width' => 700,
         ]));
-        $url = Url::fromUserInput($request->getPathInfo(), ['query' => $request->query->all()]);
-        if ($request->query->has('destination')) {
-          $request->query->remove('destination');
-        }
-        $form_state->setRedirectUrl($url);
+        return $ajaxResponse;
       }
     }
+  }
+
+  /**
+   * The batch finish callback.
+   *
+   * @throws \Drupal\Core\Form\EnforcedResponseException
+   */
+  public static function batchFinish() {
+    $batch = &batch_get();
+
+    \Drupal::service('batch.storage')->delete($batch['id']);
+    foreach ($batch['sets'] as $batch_set) {
+      if ($queue = _batch_queue($batch_set)) {
+        $queue->deleteQueue();
+      }
+    }
+    // Clean-up the session. Not needed for CLI updates.
+    if (isset($_SESSION)) {
+      unset($_SESSION['batches'][$batch['id']]);
+      if (empty($_SESSION['batches'])) {
+        unset($_SESSION['batches']);
+      }
+    }
+
+    throw new EnforcedResponseException(new AjaxResponse());
   }
 
   /**
