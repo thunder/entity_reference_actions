@@ -5,6 +5,10 @@
  * Entity reference actions module hooks.
  */
 
+use Drupal\Core\Ajax\AjaxResponse;
+use Drupal\Core\Ajax\CloseDialogCommand;
+use Drupal\Core\Ajax\ReplaceCommand;
+use Drupal\Core\EventSubscriber\MainContentViewSubscriber;
 use Drupal\Core\Field\FieldDefinitionInterface;
 use Drupal\Core\Field\WidgetInterface;
 use Drupal\Core\Form\FormStateInterface;
@@ -55,4 +59,59 @@ function entity_reference_actions_field_widget_settings_summary_alter(&$summary,
     $enabled = $context['widget']->getThirdPartySetting('entity_reference_actions', 'enabled');
     $summary[] = 'Entity Reference Actions: ' . ($enabled ? 'On' : 'Off');
   }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function entity_reference_actions_form_alter(&$form, \Drupal\Core\Form\FormStateInterface $form_state, $form_id) {
+
+  if ($form_id !== 'bulk_edit_form' && $form_state->getBuildInfo()['base_form_id'] !== 'entity_delete_multiple_confirm_form' ) {
+    return;
+  }
+
+  $is_ajax = FALSE;
+  foreach (['drupal_ajax', 'drupal_modal', 'drupal_dialog'] as $wrapper) {
+    if (strpos(\Drupal::request()->get(MainContentViewSubscriber::WRAPPER_FORMAT), $wrapper) !== FALSE) {
+      $is_ajax = TRUE;
+    }
+  }
+  if (!$is_ajax) {
+    return;
+  }
+
+  if (isset($form['actions']['submit'])) {
+    $form['actions']['submit']['#ajax']['callback'] = 'entity_reference_actions_dialog_ajax_submit';
+  }
+  if (isset($form['actions']['cancel'])) {
+    $form['actions']['cancel']['#attributes']['class'][] = 'dialog-cancel';
+  }
+}
+
+/**
+ * Submit form dialog #ajax callback.
+ *
+ * @param array $form
+ *   An associative array containing the structure of the form.
+ * @param \Drupal\Core\Form\FormStateInterface $form_state
+ *   The current state of the form.
+ *
+ * @return \Drupal\Core\Ajax\AjaxResponse
+ *   An AJAX response that display validation error messages or represents a
+ *   successful submission.
+ */
+function entity_reference_actions_dialog_ajax_submit(array &$form, FormStateInterface $form_state) {
+  $response = new AjaxResponse();
+  if ($form_state->hasAnyErrors()) {
+    $form['status_messages'] = [
+      '#type' => 'status_messages',
+      '#weight' => -1000,
+    ];
+    $form['#sorted'] = FALSE;
+    $response->addCommand(new ReplaceCommand('[data-drupal-selector="' . $form['#attributes']['data-drupal-selector'] . '"]', $form));
+  }
+  else {
+    $response->addCommand(new CloseDialogCommand());
+  }
+  return $response;
 }

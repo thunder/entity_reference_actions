@@ -8,13 +8,16 @@ use Drupal\Core\Batch\BatchBuilder;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\DependencyInjection\DependencySerializationTrait;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
+use Drupal\Core\EventSubscriber\MainContentViewSubscriber;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Messenger\MessengerInterface;
 use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\Core\Url;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\HttpKernel\HttpKernelInterface;
 
 /**
  * Provides the form functions to call actions on referenced entities.
@@ -176,10 +179,12 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
         '#type' => 'submit',
         '#name' => $field_definition->getName() . '_' . $id . '_button',
         '#value' => $label,
-        '#submit' => [[$this, 'submitForm']],
+        '#ajax' => [
+          'callback' => [$this, 'submitForm'],
+        ],
       ];
       if (count($bulk_options) > 1) {
-        $element['entity_reference_actions'][$id]['#dropbutton'] = 'bulk_edit';
+        #$element['entity_reference_actions'][$id]['#dropbutton'] = 'bulk_edit';
       }
     }
   }
@@ -238,18 +243,26 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
       });
 
       $request = $this->requestStack->getCurrentRequest();
-      $url = Url::fromUserInput($request->getPathInfo(), ['query' => $request->query->all()]);
-      $options = [
-        'query' => ['destination' => $url->toString()],
-      ];
-      if ($request->query->has('destination')) {
-        $request->query->remove('destination');
-      }
 
       $operation_definition = $action->getPluginDefinition();
       if (!empty($operation_definition['confirm_form_route_name'])) {
         $action->getPlugin()->executeMultiple($entities);
-        $form_state->setRedirect($operation_definition['confirm_form_route_name'], [], $options);
+
+        $dialog_url = Url::fromRoute($operation_definition['confirm_form_route_name'], [MainContentViewSubscriber::WRAPPER_FORMAT => 'drupal_modal'])->toString(TRUE);
+        $parameter = [
+          'entity_reference_actions_dialog' => TRUE,
+          'ajax_page_state' => $request->request->get('ajax_page_state'),
+          '_drupal_ajax' => 1,
+          'dialogOptions' => [
+            'width' => 700,
+          ]
+        ];
+        $sub_request = Request::create($dialog_url->getGeneratedUrl(), 'POST', $parameter, [], [], $request->server->all());
+        if ($request->getSession()) {
+          $sub_request->setSession($request->getSession());
+        }
+
+        return \Drupal::service('http_kernel')->handle($sub_request, HttpKernelInterface::SUB_REQUEST);
       }
       else {
         $batch_builder = (new BatchBuilder())
@@ -271,6 +284,10 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
         $this->messenger->addStatus($this->formatPlural(count($entities), '%action was applied to @count item.', '%action was applied to @count items.', [
           '%action' => $action->label(),
         ]));
+        $url = Url::fromUserInput($request->getPathInfo(), ['query' => $request->query->all()]);
+        if ($request->query->has('destination')) {
+          $request->query->remove('destination');
+        }
         $form_state->setRedirectUrl($url);
       }
     }
