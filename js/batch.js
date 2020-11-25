@@ -16,21 +16,9 @@
         if (progress === '100') {
           pb.stopMonitoring();
 
-          $.ajax({
-            url: "".concat(batch.uri, "&op=finished"),
-            type: 'POST',
-            contentType: 'application/json; charset=utf-8',
-            dataType: 'json',
-            success: function success(value) {
-              var $dialog = $('#drupal-modal');
-              if ($dialog.length) {
-                Drupal.dialog($dialog.get(0)).close();
-                $dialog.remove();
-              }
-              // Unbind dialogButtonsChange.
-              $dialog.off('dialogButtonsChange');
-            }
-          });
+          Drupal.ajax({
+            url: "".concat(batch.uri, "&op=finished")
+          }).execute();
         }
       }
 

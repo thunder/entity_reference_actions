@@ -329,7 +329,11 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
       }
     }
 
-    throw new EnforcedResponseException(new AjaxResponse());
+    $response = new AjaxResponse();
+    $response->addCommand(new CloseModalDialogCommand());
+    $response->addCommand(new MessageCommand(t('Action was successful applied.')));
+
+    throw new EnforcedResponseException($response);
   }
 
   /**
