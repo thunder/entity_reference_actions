@@ -1,11 +1,11 @@
 <?php
 
-namespace Drupal\Tests\entity_reference_actions\Functional;
+namespace Drupal\Tests\entity_reference_actions\FunctionalJavascript;
 
 use Drupal\Core\Field\FieldStorageDefinitionInterface;
 use Drupal\entity_test\Entity\EntityTest;
+use Drupal\FunctionalJavascriptTests\WebDriverTestBase;
 use Drupal\media\Entity\Media;
-use Drupal\Tests\BrowserTestBase;
 use Drupal\Tests\field\Traits\EntityReferenceTestTrait;
 use Drupal\Tests\media\Traits\MediaTypeCreationTrait;
 
@@ -14,7 +14,7 @@ use Drupal\Tests\media\Traits\MediaTypeCreationTrait;
  *
  * @group entity_reference_actions
  */
-class WidgetTest extends BrowserTestBase {
+class WidgetTest extends WebDriverTestBase {
 
   use EntityReferenceTestTrait;
   use MediaTypeCreationTrait;
@@ -96,7 +96,11 @@ class WidgetTest extends BrowserTestBase {
 
     $this->assertTrue($this->media->isPublished());
 
-    $this->drupalPostForm('/entity_test/manage/1/edit', [], 'Unpublish all media items');
+    $this->getSession()->getPage()->find('css', 'li.dropbutton-toggle button')->click();
+    $this->getSession()->getPage()->pressButton('Unpublish all media items');
+    $this->assertSession()->assertWaitOnAjaxRequest();
+
+    $this->assertSession()->pageTextContains('Action was successful applied');
 
     $this->media = Media::load($this->media->id());
     $this->assertFalse($this->media->isPublished());
@@ -133,11 +137,15 @@ class WidgetTest extends BrowserTestBase {
       ])
       ->save();
 
-    $this->drupalPostForm('/entity_test/manage/1/edit', [], 'Delete all media items');
+    $this->drupalGet('/entity_test/manage/1/edit');
 
-    $this->drupalPostForm('/media/delete', [], 'Delete');
+    $this->getSession()->getPage()->pressButton('Delete all media items');
+    $this->assertSession()->assertWaitOnAjaxRequest();
 
-    $this->assertSession()->pageTextContains('Deleted 1 item');
+    $this->assertSession()->elementExists('css', '.ui-dialog-buttonpane')->pressButton('Delete');
+    $this->assertSession()->assertWaitOnAjaxRequest();
+
+    $this->assertSession()->pageTextContains('Action was successful applied');
 
     $this->assertEmpty(Media::load($this->media->id()));
   }
