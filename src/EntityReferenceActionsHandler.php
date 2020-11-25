@@ -14,7 +14,6 @@ use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\EventSubscriber\MainContentViewSubscriber;
 use Drupal\Core\Form\EnforcedResponseException;
 use Drupal\Core\Form\FormStateInterface;
-use Drupal\Core\Messenger\MessengerInterface;
 use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\Core\Url;
@@ -45,13 +44,6 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
    * @var \Drupal\Core\Session\AccountProxyInterface
    */
   protected $currentUser;
-
-  /**
-   * The messenger service.
-   *
-   * @var \Drupal\Core\Messenger\MessengerInterface
-   */
-  protected $messenger;
 
   /**
    * The request stack.
@@ -102,8 +94,6 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
    *   The entity type manager service.
    * @param \Drupal\Core\Session\AccountProxyInterface $currentUser
    *   The current user.
-   * @param \Drupal\Core\Messenger\MessengerInterface $messenger
-   *   The messenger service.
    * @param \Symfony\Component\HttpFoundation\RequestStack $requestStack
    *   The request stack.
    * @param \Drupal\Component\Uuid\UuidInterface $uuidGenerator
@@ -111,10 +101,9 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
    * @param \Symfony\Component\HttpKernel\HttpKernelInterface $httpKernel
    *   The HTTP kernel service.
    */
-  public function __construct(EntityTypeManagerInterface $entityTypeManager, AccountProxyInterface $currentUser, MessengerInterface $messenger, RequestStack $requestStack, UuidInterface $uuidGenerator, HttpKernelInterface $httpKernel) {
+  public function __construct(EntityTypeManagerInterface $entityTypeManager, AccountProxyInterface $currentUser, RequestStack $requestStack, UuidInterface $uuidGenerator, HttpKernelInterface $httpKernel) {
     $this->entityTypeManager = $entityTypeManager;
     $this->currentUser = $currentUser;
-    $this->messenger = $messenger;
     $this->requestStack = $requestStack;
     $this->uuidGenerator = $uuidGenerator;
     $this->httpKernel = $httpKernel;
@@ -124,7 +113,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container) {
-    return new static($container->get('entity_type.manager'), $container->get('current_user'), $container->get('messenger'), $container->get('request_stack'), $container->get('uuid'), $container->get('http_kernel'));
+    return new static($container->get('entity_type.manager'), $container->get('current_user'), $container->get('request_stack'), $container->get('uuid'), $container->get('http_kernel'));
   }
 
   /**
@@ -241,83 +230,81 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
     $context['widget']->extractFormValues($items, $values, $form_state);
 
-    if (!empty($items->getValue())) {
+    $action = $this->actions[end($button['#array_parents'])];
 
-      $action = $this->actions[end($button['#array_parents'])];
+    $ids = array_filter(!$items->isEmpty() ? array_column($items->getValue(), 'target_id') : []);
 
-      $ids = array_filter(array_column($items->getValue(), 'target_id'));
+    $entities = $this->entityTypeManager->getStorage($items->getSettings()['target_type'])
+      ->loadMultiple($ids);
 
-      $entities = $this->entityTypeManager->getStorage($items->getSettings()['target_type'])
-        ->loadMultiple($ids);
+    $commands = [];
+    $entities = array_filter($entities, function ($entity) use ($action, &$commands) {
+      if (!$action->getPlugin()->access($entity, $this->currentUser)) {
+        $commands[] = new MessageCommand($this->t('No access to execute %action on the @entity_type_label %entity_label.', [
+          '%action' => $action->label(),
+          '@entity_type_label' => $entity->getEntityType()->getLabel(),
+          '%entity_label' => $entity->label(),
+        ]), NULL, ['type' => 'warning']);
+        return FALSE;
+      }
+      return TRUE;
+    });
 
-      $commands = [];
-      $entities = array_filter($entities, function ($entity) use ($action, &$commands) {
-        if (!$action->getPlugin()->access($entity, $this->currentUser)) {
-          $commands[] = new MessageCommand($this->t('No access to execute %action on the @entity_type_label %entity_label.', [
-            '%action' => $action->label(),
-            '@entity_type_label' => $entity->getEntityType()->getLabel(),
-            '%entity_label' => $entity->label(),
-          ]), NULL, ['type' => 'warning']);
-          return FALSE;
-        }
-        return TRUE;
-      });
+    $response = new AjaxResponse();
+    if ($entities) {
+      $dialog_options = [
+        'width' => 700,
+      ];
+      $operation_definition = $action->getPluginDefinition();
+      if (!empty($operation_definition['confirm_form_route_name'])) {
+        $action->getPlugin()->executeMultiple($entities);
 
-      $response = new AjaxResponse();
-      if ($entities) {
-        $dialog_options = [
-          'width' => 700,
+        $request = $this->requestStack->getCurrentRequest();
+        $dialog_url = Url::fromRoute($operation_definition['confirm_form_route_name'], [MainContentViewSubscriber::WRAPPER_FORMAT => 'drupal_modal'])->toString(TRUE);
+        $parameter = [
+          'ajax_page_state' => $request->request->get('ajax_page_state'),
+          'dialogOptions' => $dialog_options,
         ];
-        $operation_definition = $action->getPluginDefinition();
-        if (!empty($operation_definition['confirm_form_route_name'])) {
-          $action->getPlugin()->executeMultiple($entities);
-
-          $request = $this->requestStack->getCurrentRequest();
-          $dialog_url = Url::fromRoute($operation_definition['confirm_form_route_name'], [MainContentViewSubscriber::WRAPPER_FORMAT => 'drupal_modal'])->toString(TRUE);
-          $parameter = [
-            'ajax_page_state' => $request->request->get('ajax_page_state'),
-            'dialogOptions' => $dialog_options,
-          ];
-          $sub_request = Request::create($dialog_url->getGeneratedUrl(), 'POST', $parameter, [], [], $request->server->all());
-          if ($request->getSession()) {
-            $sub_request->setSession($request->getSession());
-          }
-
-          /** @var \Drupal\Core\Ajax\AjaxResponse $response */
-          $response = $this->httpKernel->handle($sub_request, HttpKernelInterface::SUB_REQUEST);
-
-          // We have to clear the response data, otherwise the new commands will
-          // not be returned.
-          $response->setContent("{}");
+        $sub_request = Request::create($dialog_url->getGeneratedUrl(), 'POST', $parameter, [], [], $request->server->all());
+        if ($request->getSession()) {
+          $sub_request->setSession($request->getSession());
         }
-        else {
-          $batch_builder = (new BatchBuilder())
-            ->setFinishCallback([__CLASS__, 'batchFinish']);
-          foreach ($entities as $entity) {
-            $batch_builder->addOperation([__CLASS__, 'batchCallback'], [
-              $entity->id(),
-              $entity->getEntityTypeId(),
-              $action->id(),
-            ]);
-          }
 
-          batch_set($batch_builder->toArray());
-          batch_process();
+        /** @var \Drupal\Core\Ajax\AjaxResponse $response */
+        $response = $this->httpKernel->handle($sub_request, HttpKernelInterface::SUB_REQUEST);
 
-          require_once \Drupal::root() . '/core/includes/batch.inc';
-          $batch_page = _batch_progress_page();
-          $batch_page['#attached']['library'] = ['entity_reference_actions/batch'];
-
-          $response->addCommand(new OpenModalDialogCommand($this->getActionLabel($action), $batch_page, $dialog_options));
+        // We have to clear the response data, otherwise the new commands will
+        // not be returned.
+        $response->setContent("{}");
+      }
+      else {
+        $batch_builder = (new BatchBuilder())
+          ->setFinishCallback([__CLASS__, 'batchFinish']);
+        foreach ($entities as $entity) {
+          $batch_builder->addOperation([__CLASS__, 'batchCallback'], [
+            $entity->id(),
+            $entity->getEntityTypeId(),
+            $action->id(),
+          ]);
         }
-      }
 
-      // Attach existing commands.
-      foreach ($commands as $command) {
-        $response->addCommand($command);
+        batch_set($batch_builder->toArray());
+        batch_process();
+
+        require_once \Drupal::root() . '/core/includes/batch.inc';
+        $batch_page = _batch_progress_page();
+        $batch_page['#attached']['library'] = ['entity_reference_actions/batch'];
+
+        $response->addCommand(new OpenModalDialogCommand($this->getActionLabel($action), $batch_page, $dialog_options));
       }
-      return $response;
     }
+
+    // Attach existing commands.
+    foreach ($commands as $command) {
+      $response->addCommand($command);
+    }
+    return $response;
+
   }
 
   /**
