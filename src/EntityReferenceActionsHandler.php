@@ -4,17 +4,26 @@ namespace Drupal\entity_reference_actions;
 
 use Drupal\Component\Utility\NestedArray;
 use Drupal\Component\Uuid\UuidInterface;
+use Drupal\Core\Ajax\AjaxResponse;
+use Drupal\Core\Ajax\CloseModalDialogCommand;
+use Drupal\Core\Ajax\MessageCommand;
+use Drupal\Core\Ajax\OpenModalDialogCommand;
+use Drupal\Core\Ajax\ReplaceCommand;
 use Drupal\Core\Batch\BatchBuilder;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\DependencyInjection\DependencySerializationTrait;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
+use Drupal\Core\EventSubscriber\MainContentViewSubscriber;
+use Drupal\Core\Form\EnforcedResponseException;
 use Drupal\Core\Form\FormStateInterface;
-use Drupal\Core\Messenger\MessengerInterface;
 use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\Core\Url;
+use Drupal\system\ActionConfigEntityInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\HttpKernel\HttpKernelInterface;
 
 /**
  * Provides the form functions to call actions on referenced entities.
@@ -39,13 +48,6 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
   protected $currentUser;
 
   /**
-   * The messenger service.
-   *
-   * @var \Drupal\Core\Messenger\MessengerInterface
-   */
-  protected $messenger;
-
-  /**
    * The request stack.
    *
    * @var \Symfony\Component\HttpFoundation\RequestStack
@@ -60,9 +62,16 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
   protected $uuidGenerator;
 
   /**
+   * The HTTP kernel service.
+   *
+   * @var \Symfony\Component\HttpKernel\HttpKernelInterface
+   */
+  protected $httpKernel;
+
+  /**
    * All available options for this entity_type.
    *
-   * @var array
+   * @var \Drupal\system\ActionConfigEntityInterface[]
    */
   protected $actions = [];
 
@@ -87,26 +96,26 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
    *   The entity type manager service.
    * @param \Drupal\Core\Session\AccountProxyInterface $currentUser
    *   The current user.
-   * @param \Drupal\Core\Messenger\MessengerInterface $messenger
-   *   The messenger service.
    * @param \Symfony\Component\HttpFoundation\RequestStack $requestStack
    *   The request stack.
    * @param \Drupal\Component\Uuid\UuidInterface $uuidGenerator
    *   The UUID generator service.
+   * @param \Symfony\Component\HttpKernel\HttpKernelInterface $httpKernel
+   *   The HTTP kernel service.
    */
-  public function __construct(EntityTypeManagerInterface $entityTypeManager, AccountProxyInterface $currentUser, MessengerInterface $messenger, RequestStack $requestStack, UuidInterface $uuidGenerator) {
+  public function __construct(EntityTypeManagerInterface $entityTypeManager, AccountProxyInterface $currentUser, RequestStack $requestStack, UuidInterface $uuidGenerator, HttpKernelInterface $httpKernel) {
     $this->entityTypeManager = $entityTypeManager;
     $this->currentUser = $currentUser;
-    $this->messenger = $messenger;
     $this->requestStack = $requestStack;
     $this->uuidGenerator = $uuidGenerator;
+    $this->httpKernel = $httpKernel;
   }
 
   /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container) {
-    return new static($container->get('entity_type.manager'), $container->get('current_user'), $container->get('messenger'), $container->get('request_stack'), $container->get('uuid'));
+    return new static($container->get('entity_type.manager'), $container->get('current_user'), $container->get('request_stack'), $container->get('uuid'), $container->get('http_kernel'));
   }
 
   /**
@@ -164,19 +173,31 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
     $form_state->set($uuid, $context);
 
+    $element['entity_reference_actions_messages'] = [
+      '#type' => 'container',
+      '#attributes' => ['data-entity-reference-actions-messages' => ''],
+    ];
+
     $element['entity_reference_actions'] = [
       '#type' => 'simple_actions',
       '#uuid' => $uuid,
+      '#attached' => [
+        'library' => [
+          'core/drupal.dialog.ajax',
+        ],
+      ],
     ];
 
     $bulk_options = $this->getBulkOptions();
     foreach ($bulk_options as $id => $label) {
-      // Add another option to go to the AMP page after saving.
       $element['entity_reference_actions'][$id] = [
         '#type' => 'submit',
+        '#id' => $field_definition->getName() . '_' . $id . '_button',
         '#name' => $field_definition->getName() . '_' . $id . '_button',
         '#value' => $label,
-        '#submit' => [[$this, 'submitForm']],
+        '#ajax' => [
+          'callback' => [$this, 'submitForm'],
+        ],
       ];
       if (count($bulk_options) > 1) {
         $element['entity_reference_actions'][$id]['#dropbutton'] = 'bulk_edit';
@@ -206,56 +227,64 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
     $parents = array_slice($parents, 0, -1);
     $values = NestedArray::getValue($form, $parents);
 
-    $uuid = $values[$field_name]['entity_reference_actions']['#uuid'];
-
-    $context = $form_state->get($uuid);
+    $context = $form_state->get($values[$field_name]['entity_reference_actions']['#uuid']);
 
     /** @var \Drupal\Core\Field\FieldItemListInterface $items */
     $items = $context['items'];
 
     $context['widget']->extractFormValues($items, $values, $form_state);
 
-    if (!empty($items->getValue())) {
+    $action = $this->actions[end($button['#array_parents'])];
 
-      $action = $this->entityTypeManager->getStorage('action')
-        ->load(end($button['#array_parents']));
+    $ids = array_filter(!$items->isEmpty() ? array_column($items->getValue(), 'target_id') : []);
 
-      $ids = array_filter(array_column($items->getValue(), 'target_id'));
+    $entities = $this->entityTypeManager->getStorage($items->getSettings()['target_type'])
+      ->loadMultiple($ids);
 
-      $entities = $this->entityTypeManager->getStorage($items->getSettings()['target_type'])
-        ->loadMultiple($ids);
-
-      $entities = array_filter($entities, function ($entity) use ($action) {
-        if (!$action->getPlugin()->access($entity, $this->currentUser)) {
-          $this->messenger->addError($this->t('No access to execute %action on the @entity_type_label %entity_label.', [
-            '%action' => $action->label(),
-            '@entity_type_label' => $entity->getEntityType()->getLabel(),
-            '%entity_label' => $entity->label(),
-          ]));
-          return FALSE;
-        }
-        return TRUE;
-      });
-
-      $request = $this->requestStack->getCurrentRequest();
-      $url = Url::fromUserInput($request->getPathInfo(), ['query' => $request->query->all()]);
-      $options = [
-        'query' => ['destination' => $url->toString()],
-      ];
-      if ($request->query->has('destination')) {
-        $request->query->remove('destination');
+    $commands = [];
+    $entities = array_filter($entities, function ($entity) use ($action, &$commands) {
+      if (!$action->getPlugin()->access($entity, $this->currentUser)) {
+        $commands[] = new MessageCommand($this->t('No access to execute %action on the @entity_type_label %entity_label.', [
+          '%action' => $action->label(),
+          '@entity_type_label' => $entity->getEntityType()->getLabel(),
+          '%entity_label' => $entity->label(),
+        ]), '[data-entity-reference-actions-messages]', ['type' => 'warning'], FALSE);
+        return FALSE;
       }
+      return TRUE;
+    });
 
+    $response = new AjaxResponse();
+    if ($entities) {
+      $dialog_options = [
+        'width' => 700,
+      ];
       $operation_definition = $action->getPluginDefinition();
       if (!empty($operation_definition['confirm_form_route_name'])) {
         $action->getPlugin()->executeMultiple($entities);
-        $form_state->setRedirect($operation_definition['confirm_form_route_name'], [], $options);
+
+        $request = $this->requestStack->getCurrentRequest();
+        $dialog_url = Url::fromRoute($operation_definition['confirm_form_route_name'], [MainContentViewSubscriber::WRAPPER_FORMAT => 'drupal_modal'])->toString(TRUE);
+        $parameter = [
+          'ajax_page_state' => $request->request->get('ajax_page_state'),
+          'dialogOptions' => $dialog_options,
+        ];
+        $sub_request = Request::create($dialog_url->getGeneratedUrl(), 'POST', $parameter, [], [], $request->server->all());
+        if ($request->getSession()) {
+          $sub_request->setSession($request->getSession());
+        }
+
+        /** @var \Drupal\Core\Ajax\AjaxResponse $response */
+        $response = $this->httpKernel->handle($sub_request, HttpKernelInterface::SUB_REQUEST);
+
+        // We have to clear the response data, otherwise the new commands will
+        // not be returned.
+        $response->setContent("{}");
       }
       else {
         $batch_builder = (new BatchBuilder())
-          ->setTitle($this->formatPlural(count($entities), 'Apply %action action to @count item.', 'Apply %action action to @count items.', [
-            '%action' => $action->label(),
-          ]));
+          ->setTitle($this->getActionLabel($action))
+          ->setFinishCallback([__CLASS__, 'batchFinish']);
         foreach ($entities as $entity) {
           $batch_builder->addOperation([__CLASS__, 'batchCallback'], [
             $entity->id(),
@@ -265,15 +294,60 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
         }
 
         batch_set($batch_builder->toArray());
+        batch_process();
 
-        // Don't display the message unless there are some elements affected and
-        // there is no confirmation form.
-        $this->messenger->addStatus($this->formatPlural(count($entities), '%action was applied to @count item.', '%action was applied to @count items.', [
-          '%action' => $action->label(),
-        ]));
-        $form_state->setRedirectUrl($url);
+        require_once DRUPAL_ROOT . '/core/includes/batch.inc';
+        $batch_page = _batch_progress_page();
+        $batch_page['#attached']['library'] = ['entity_reference_actions/batch'];
+
+        $response->addCommand(new OpenModalDialogCommand($this->getActionLabel($action), $batch_page, $dialog_options));
       }
     }
+    else {
+      $entity_type = $this->entityTypeManager->getDefinition($this->entityTypeId);
+      $commands[] = new MessageCommand($this->t('No @entity_type_label selected.', [
+        '@entity_type_label' => $entity_type->getPluralLabel(),
+      ]), '[data-entity-reference-actions-messages]', ['type' => 'warning']);
+    }
+
+    // Attach existing commands.
+    foreach ($commands as $command) {
+      $response->addCommand($command);
+    }
+    return $response;
+
+  }
+
+  /**
+   * The batch finish callback.
+   *
+   * @throws \Drupal\Core\Form\EnforcedResponseException
+   */
+  public static function batchFinish() {
+    $batch = &batch_get();
+
+    // Copied form _batch_finished().
+    \Drupal::service('batch.storage')->delete($batch['id']);
+    foreach ($batch['sets'] as $batch_set) {
+      if ($queue = _batch_queue($batch_set)) {
+        $queue->deleteQueue();
+      }
+    }
+    // Clean-up the session. Not needed for CLI updates.
+    if (isset($_SESSION)) {
+      unset($_SESSION['batches'][$batch['id']]);
+      if (empty($_SESSION['batches'])) {
+        unset($_SESSION['batches']);
+      }
+    }
+
+    $response = new AjaxResponse();
+    $response->addCommand(new CloseModalDialogCommand());
+    $response->addCommand(new MessageCommand(t('%action was successfully applied.', ['%action' => $batch['sets'][0]['title']]), '[data-entity-reference-actions-messages]'));
+
+    // _batch_finished() only accepts a RedirectResponse. There is no
+    // other chance to return our AjaxResponse without throwing this exception.
+    throw new EnforcedResponseException($response);
   }
 
   /**
@@ -366,7 +440,6 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
    */
   protected function getBulkOptions($filtered = TRUE) {
     $options = [];
-    $entity_type = $this->entityTypeManager->getDefinition($this->entityTypeId);
     // Filter the action list.
     /** @var \Drupal\system\ActionConfigEntityInterface $action */
     foreach ($this->actions as $id => $action) {
@@ -383,14 +456,60 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
           continue;
         }
       }
-      $label = $action->label();
-      if (isset($action->getPlugin()->getPluginDefinition()['action_label'])) {
-        $label = sprintf('%s all %s', $action->getPlugin()->getPluginDefinition()['action_label'], $entity_type->getPluralLabel());
-      }
-      $options[$id] = $label;
+      $options[$id] = $this->getActionLabel($action);
     }
 
     return $options;
+  }
+
+  /**
+   * Returns the label for an action.
+   *
+   * @param \Drupal\system\ActionConfigEntityInterface $action
+   *   The action.
+   *
+   * @return string
+   *   The action label.
+   *
+   * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
+   */
+  protected function getActionLabel(ActionConfigEntityInterface $action) {
+    $entity_type = $this->entityTypeManager->getDefinition($this->entityTypeId);
+
+    $label = $action->label();
+    if (isset($action->getPlugin()->getPluginDefinition()['action_label'])) {
+      $label = sprintf('%s all %s', $action->getPlugin()->getPluginDefinition()['action_label'], $entity_type->getPluralLabel());
+    }
+    return $label;
+  }
+
+  /**
+   * Submit form dialog #ajax callback.
+   *
+   * @param array $form
+   *   An associative array containing the structure of the form.
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The current state of the form.
+   *
+   * @return \Drupal\Core\Ajax\AjaxResponse
+   *   An AJAX response that display validation error messages or represents a
+   *   successful submission.
+   */
+  public static function dialogAjaxSubmit(array &$form, FormStateInterface $form_state) {
+    $response = new AjaxResponse();
+    if ($form_state->hasAnyErrors()) {
+      $form['status_messages'] = [
+        '#type' => 'status_messages',
+        '#weight' => -1000,
+      ];
+      $form['#sorted'] = FALSE;
+      $response->addCommand(new ReplaceCommand('[data-drupal-selector="' . $form['#attributes']['data-drupal-selector'] . '"]', $form));
+    }
+    else {
+      $response->addCommand(new MessageCommand(t('Action was successfully applied.'), '[data-entity-reference-actions-messages]'));
+      $response->addCommand(new CloseModalDialogCommand());
+    }
+    return $response;
   }
 
 }

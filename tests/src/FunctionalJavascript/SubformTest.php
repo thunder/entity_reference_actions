@@ -1,14 +1,14 @@
 <?php
 
-namespace Drupal\Tests\entity_reference_actions\Functional;
+namespace Drupal\Tests\entity_reference_actions\FunctionalJavascript;
 
 use Drupal\Core\Entity\Entity\EntityFormDisplay;
 use Drupal\Core\Entity\Entity\EntityFormMode;
 use Drupal\Core\Field\FieldStorageDefinitionInterface;
 use Drupal\entity_test\Entity\EntityTest;
+use Drupal\FunctionalJavascriptTests\WebDriverTestBase;
 use Drupal\media\Entity\Media;
 use Drupal\paragraphs\Entity\Paragraph;
-use Drupal\Tests\BrowserTestBase;
 use Drupal\Tests\field\Traits\EntityReferenceTestTrait;
 use Drupal\Tests\media\Traits\MediaTypeCreationTrait;
 use Drupal\Tests\paragraphs\FunctionalJavascript\ParagraphsTestBaseTrait;
@@ -18,7 +18,7 @@ use Drupal\Tests\paragraphs\FunctionalJavascript\ParagraphsTestBaseTrait;
  *
  * @group entity_reference_actions
  */
-class SubformTest extends BrowserTestBase {
+class SubformTest extends WebDriverTestBase {
 
   use EntityReferenceTestTrait;
   use MediaTypeCreationTrait;
@@ -129,7 +129,13 @@ class SubformTest extends BrowserTestBase {
     $this->assertTrue($this->mediaImage->isPublished());
 
     $this->drupalGet($entity->toUrl('edit-form'));
-    $this->submitForm([], 'Unpublish all media items');
+
+    $this->getSession()->getPage()->find('css', 'li.dropbutton-toggle button')->click();
+    $this->getSession()->getPage()->pressButton('Unpublish all media items');
+
+    $this->assertSession()->assertWaitOnAjaxRequest();
+
+    $this->assertSession()->pageTextContains('Unpublish all media items was successfully applied');
 
     $this->mediaImage = Media::load($this->mediaImage->id());
     $this->assertFalse($this->mediaImage->isPublished());
@@ -199,9 +205,12 @@ class SubformTest extends BrowserTestBase {
 
     $this->drupalGet($entity->toUrl('edit-form'));
 
-    $this->submitForm([], 'Unpublish all media items');
+    $this->getSession()->getPage()->find('css', 'li.dropbutton-toggle button')->click();
+    $this->getSession()->getPage()->pressButton('Unpublish all media items');
 
-    $this->assertSession()->pageTextContains('Unpublish media was applied to 1 item');
+    $this->assertSession()->assertWaitOnAjaxRequest();
+
+    $this->assertSession()->pageTextContains('Unpublish all media items was successfully applied');
 
     $this->mediaImage = Media::load($this->mediaImage->id());
     $this->assertFalse($this->mediaImage->isPublished());

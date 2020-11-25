@@ -5,8 +5,10 @@
  * Entity reference actions module hooks.
  */
 
+use Drupal\Core\EventSubscriber\MainContentViewSubscriber;
 use Drupal\Core\Field\FieldDefinitionInterface;
 use Drupal\Core\Field\WidgetInterface;
+use Drupal\Core\Form\ConfirmFormBase;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\entity_reference_actions\EntityReferenceActionsHandler;
 
@@ -55,4 +57,27 @@ function entity_reference_actions_field_widget_settings_summary_alter(&$summary,
     $enabled = $context['widget']->getThirdPartySetting('entity_reference_actions', 'enabled');
     $summary[] = 'Entity Reference Actions: ' . ($enabled ? 'On' : 'Off');
   }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function entity_reference_actions_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+
+  $is_ajax = FALSE;
+  foreach (['drupal_ajax', 'drupal_modal', 'drupal_dialog'] as $wrapper) {
+    if (strpos(\Drupal::request()->get(MainContentViewSubscriber::WRAPPER_FORMAT), $wrapper) !== FALSE) {
+      $is_ajax = TRUE;
+    }
+  }
+
+  if (!$is_ajax || !($form_state->getFormObject() instanceof ConfirmFormBase)) {
+    return;
+  }
+
+  $form['actions']['submit']['#ajax']['callback'] = [
+    EntityReferenceActionsHandler::class,
+    'dialogAjaxSubmit',
+  ];
+  $form['actions']['cancel']['#attributes']['class'][] = 'dialog-cancel';
 }
