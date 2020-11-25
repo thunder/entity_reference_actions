@@ -173,6 +173,14 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
     $form_state->set($uuid, $context);
 
+    // Prepend a message area.
+    $element = [
+      'entity_reference_actions_messages' => [
+        '#type' => 'container',
+        '#attributes' => ['data-entity-reference-actions-messages' => ''],
+      ],
+    ] + $element;
+
     $element['entity_reference_actions'] = [
       '#type' => 'simple_actions',
       '#uuid' => $uuid,
@@ -185,7 +193,6 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
     $bulk_options = $this->getBulkOptions();
     foreach ($bulk_options as $id => $label) {
-      // Add another option to go to the AMP page after saving.
       $element['entity_reference_actions'][$id] = [
         '#type' => 'submit',
         '#id' => $field_definition->getName() . '_' . $id . '_button',
@@ -244,7 +251,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
           '%action' => $action->label(),
           '@entity_type_label' => $entity->getEntityType()->getLabel(),
           '%entity_label' => $entity->label(),
-        ]), NULL, ['type' => 'warning']);
+        ]), '[data-entity-reference-actions-messages]', ['type' => 'warning'], FALSE);
         return FALSE;
       }
       return TRUE;
@@ -298,6 +305,12 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
         $response->addCommand(new OpenModalDialogCommand($this->getActionLabel($action), $batch_page, $dialog_options));
       }
     }
+    else {
+      $entity_type = $this->entityTypeManager->getDefinition($this->entityTypeId);
+      $commands[] = new MessageCommand($this->t('No @entity_type_label selected.', [
+        '@entity_type_label' => $entity_type->getPluralLabel(),
+      ]), '[data-entity-reference-actions-messages]', ['type' => 'warning']);
+    }
 
     // Attach existing commands.
     foreach ($commands as $command) {
@@ -315,6 +328,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
   public static function batchFinish() {
     $batch = &batch_get();
 
+    // Copied form _batch_finished().
     \Drupal::service('batch.storage')->delete($batch['id']);
     foreach ($batch['sets'] as $batch_set) {
       if ($queue = _batch_queue($batch_set)) {
@@ -331,8 +345,10 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
     $response = new AjaxResponse();
     $response->addCommand(new CloseModalDialogCommand());
-    $response->addCommand(new MessageCommand(t('Action was successful applied.')));
+    $response->addCommand(new MessageCommand(t('Action was successful applied.'), '[data-entity-reference-actions-messages]'));
 
+    // _batch_finished() only accepts a RedirectResponse. There is no
+    // other chance to return our AjaxResponse without throwing this exception.
     throw new EnforcedResponseException($response);
   }
 
@@ -492,7 +508,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
       $response->addCommand(new ReplaceCommand('[data-drupal-selector="' . $form['#attributes']['data-drupal-selector'] . '"]', $form));
     }
     else {
-      $response->addCommand(new MessageCommand(t('Action was successful applied.')));
+      $response->addCommand(new MessageCommand(t('Action was successful applied.'), '[data-entity-reference-actions-messages]'));
       $response->addCommand(new CloseModalDialogCommand());
     }
     return $response;
