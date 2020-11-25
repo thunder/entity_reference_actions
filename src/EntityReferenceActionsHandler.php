@@ -291,7 +291,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
         batch_set($batch_builder->toArray());
         batch_process();
 
-        require_once \Drupal::root() . '/core/includes/batch.inc';
+        require_once DRUPAL_ROOT . '/core/includes/batch.inc';
         $batch_page = _batch_progress_page();
         $batch_page['#attached']['library'] = ['entity_reference_actions/batch'];
 
