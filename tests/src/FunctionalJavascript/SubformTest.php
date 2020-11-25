@@ -135,7 +135,7 @@ class SubformTest extends WebDriverTestBase {
 
     $this->assertSession()->assertWaitOnAjaxRequest();
 
-    $this->assertSession()->pageTextContains('Action was successful applied');
+    $this->assertSession()->pageTextContains('Unpublish all media items was successfully applied');
 
     $this->mediaImage = Media::load($this->mediaImage->id());
     $this->assertFalse($this->mediaImage->isPublished());
@@ -210,7 +210,7 @@ class SubformTest extends WebDriverTestBase {
 
     $this->assertSession()->assertWaitOnAjaxRequest();
 
-    $this->assertSession()->pageTextContains('Action was successful applied');
+    $this->assertSession()->pageTextContains('Unpublish all media items was successfully applied');
 
     $this->mediaImage = Media::load($this->mediaImage->id());
     $this->assertFalse($this->mediaImage->isPublished());

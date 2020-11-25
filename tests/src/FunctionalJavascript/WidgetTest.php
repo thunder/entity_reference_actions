@@ -100,7 +100,7 @@ class WidgetTest extends WebDriverTestBase {
     $this->getSession()->getPage()->pressButton('Unpublish all media items');
     $this->assertSession()->assertWaitOnAjaxRequest();
 
-    $this->assertSession()->pageTextContains('Action was successful applied');
+    $this->assertSession()->pageTextContains('Unpublish all media items was successfully applied');
 
     $this->media = Media::load($this->media->id());
     $this->assertFalse($this->media->isPublished());
@@ -145,7 +145,7 @@ class WidgetTest extends WebDriverTestBase {
     $this->assertSession()->elementExists('css', '.ui-dialog-buttonpane')->pressButton('Delete');
     $this->assertSession()->assertWaitOnAjaxRequest();
 
-    $this->assertSession()->pageTextContains('Action was successful applied');
+    $this->assertSession()->pageTextContains('Action was successfully applied');
 
     $this->assertEmpty(Media::load($this->media->id()));
   }
