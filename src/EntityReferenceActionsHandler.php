@@ -5,8 +5,10 @@ namespace Drupal\entity_reference_actions;
 use Drupal\Component\Utility\NestedArray;
 use Drupal\Component\Uuid\UuidInterface;
 use Drupal\Core\Ajax\AjaxResponse;
+use Drupal\Core\Ajax\CloseModalDialogCommand;
 use Drupal\Core\Ajax\MessageCommand;
 use Drupal\Core\Ajax\OpenModalDialogCommand;
+use Drupal\Core\Ajax\ReplaceCommand;
 use Drupal\Core\Batch\BatchBuilder;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\DependencyInjection\DependencySerializationTrait;
@@ -221,9 +223,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
     $parents = array_slice($parents, 0, -1);
     $values = NestedArray::getValue($form, $parents);
 
-    $uuid = $values[$field_name]['entity_reference_actions']['#uuid'];
-
-    $context = $form_state->get($uuid);
+    $context = $form_state->get($values[$field_name]['entity_reference_actions']['#uuid']);
 
     /** @var \Drupal\Core\Field\FieldItemListInterface $items */
     $items = $context['items'];
@@ -463,6 +463,35 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
       $label = sprintf('%s all %s', $action->getPlugin()->getPluginDefinition()['action_label'], $entity_type->getPluralLabel());
     }
     return $label;
+  }
+
+  /**
+   * Submit form dialog #ajax callback.
+   *
+   * @param array $form
+   *   An associative array containing the structure of the form.
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The current state of the form.
+   *
+   * @return \Drupal\Core\Ajax\AjaxResponse
+   *   An AJAX response that display validation error messages or represents a
+   *   successful submission.
+   */
+  public static function dialogAjaxSubmit(array &$form, FormStateInterface $form_state) {
+    $response = new AjaxResponse();
+    if ($form_state->hasAnyErrors()) {
+      $form['status_messages'] = [
+        '#type' => 'status_messages',
+        '#weight' => -1000,
+      ];
+      $form['#sorted'] = FALSE;
+      $response->addCommand(new ReplaceCommand('[data-drupal-selector="' . $form['#attributes']['data-drupal-selector'] . '"]', $form));
+    }
+    else {
+      $response->addCommand(new MessageCommand(t('Action was successful applied.')));
+      $response->addCommand(new CloseModalDialogCommand());
+    }
+    return $response;
   }
 
 }
