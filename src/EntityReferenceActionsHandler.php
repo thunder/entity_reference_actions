@@ -5,6 +5,7 @@ namespace Drupal\entity_reference_actions;
 use Drupal\Component\Utility\NestedArray;
 use Drupal\Component\Uuid\UuidInterface;
 use Drupal\Core\Ajax\AjaxResponse;
+use Drupal\Core\Ajax\MessageCommand;
 use Drupal\Core\Ajax\OpenModalDialogCommand;
 use Drupal\Core\Batch\BatchBuilder;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
@@ -17,6 +18,7 @@ use Drupal\Core\Messenger\MessengerInterface;
 use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\Core\Url;
+use Drupal\system\ActionConfigEntityInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -75,7 +77,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
   /**
    * All available options for this entity_type.
    *
-   * @var array
+   * @var \Drupal\system\ActionConfigEntityInterface[]
    */
   protected $actions = [];
 
@@ -241,75 +243,80 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
     if (!empty($items->getValue())) {
 
-      $action = $this->entityTypeManager->getStorage('action')
-        ->load(end($button['#array_parents']));
+      $action = $this->actions[end($button['#array_parents'])];
 
       $ids = array_filter(array_column($items->getValue(), 'target_id'));
 
       $entities = $this->entityTypeManager->getStorage($items->getSettings()['target_type'])
         ->loadMultiple($ids);
 
-      $entities = array_filter($entities, function ($entity) use ($action) {
+      $commands = [];
+      $entities = array_filter($entities, function ($entity) use ($action, &$commands) {
         if (!$action->getPlugin()->access($entity, $this->currentUser)) {
-          $this->messenger->addError($this->t('No access to execute %action on the @entity_type_label %entity_label.', [
+          $commands[] = new MessageCommand($this->t('No access to execute %action on the @entity_type_label %entity_label.', [
             '%action' => $action->label(),
             '@entity_type_label' => $entity->getEntityType()->getLabel(),
             '%entity_label' => $entity->label(),
-          ]));
+          ]), NULL, ['type' => 'warning']);
           return FALSE;
         }
         return TRUE;
       });
 
-      $operation_definition = $action->getPluginDefinition();
-      if (!empty($operation_definition['confirm_form_route_name'])) {
-        $action->getPlugin()->executeMultiple($entities);
-
-        $request = $this->requestStack->getCurrentRequest();
-        $dialog_url = Url::fromRoute($operation_definition['confirm_form_route_name'], [MainContentViewSubscriber::WRAPPER_FORMAT => 'drupal_modal'])->toString(TRUE);
-        $parameter = [
-          'ajax_page_state' => $request->request->get('ajax_page_state'),
-          '_drupal_ajax' => 1,
-          'dialogOptions' => [
-            'width' => 700,
-          ],
-        ];
-        $sub_request = Request::create($dialog_url->getGeneratedUrl(), 'POST', $parameter, [], [], $request->server->all());
-        if ($request->getSession()) {
-          $sub_request->setSession($request->getSession());
-        }
-
-        return $this->httpKernel->handle($sub_request, HttpKernelInterface::SUB_REQUEST);
-      }
-      else {
-        $batch_builder = (new BatchBuilder())
-          ->setTitle($this->formatPlural(count($entities), 'Apply %action action to @count item.', 'Apply %action action to @count items.', [
-            '%action' => $action->label(),
-          ]))
-          ->setFinishCallback([__CLASS__, 'batchFinish']);
-        foreach ($entities as $entity) {
-          $batch_builder->addOperation([__CLASS__, 'batchCallback'], [
-            $entity->id(),
-            $entity->getEntityTypeId(),
-            $action->id(),
-          ]);
-        }
-
-        $batch_array = $batch_builder->toArray();
-        batch_set($batch_array);
-
-        batch_process();
-
-        require_once \Drupal::root() . '/core/includes/batch.inc';
-        $batch_page = _batch_progress_page();
-        $batch_page['#attached']['library'] = ['entity_reference_actions/batch'];
-
-        $ajaxResponse = new AjaxResponse();
-        $ajaxResponse->addCommand(new OpenModalDialogCommand($batch_array['title'], $batch_page, [
+      $response = new AjaxResponse();
+      if ($entities) {
+        $dialog_options = [
           'width' => 700,
-        ]));
-        return $ajaxResponse;
+        ];
+        $operation_definition = $action->getPluginDefinition();
+        if (!empty($operation_definition['confirm_form_route_name'])) {
+          $action->getPlugin()->executeMultiple($entities);
+
+          $request = $this->requestStack->getCurrentRequest();
+          $dialog_url = Url::fromRoute($operation_definition['confirm_form_route_name'], [MainContentViewSubscriber::WRAPPER_FORMAT => 'drupal_modal'])->toString(TRUE);
+          $parameter = [
+            'ajax_page_state' => $request->request->get('ajax_page_state'),
+            'dialogOptions' => $dialog_options,
+          ];
+          $sub_request = Request::create($dialog_url->getGeneratedUrl(), 'POST', $parameter, [], [], $request->server->all());
+          if ($request->getSession()) {
+            $sub_request->setSession($request->getSession());
+          }
+
+          /** @var \Drupal\Core\Ajax\AjaxResponse $response */
+          $response = $this->httpKernel->handle($sub_request, HttpKernelInterface::SUB_REQUEST);
+
+          // We have to clear the response data, otherwise the new commands will
+          // not be returned.
+          $response->setContent("{}");
+        }
+        else {
+          $batch_builder = (new BatchBuilder())
+            ->setFinishCallback([__CLASS__, 'batchFinish']);
+          foreach ($entities as $entity) {
+            $batch_builder->addOperation([__CLASS__, 'batchCallback'], [
+              $entity->id(),
+              $entity->getEntityTypeId(),
+              $action->id(),
+            ]);
+          }
+
+          batch_set($batch_builder->toArray());
+          batch_process();
+
+          require_once \Drupal::root() . '/core/includes/batch.inc';
+          $batch_page = _batch_progress_page();
+          $batch_page['#attached']['library'] = ['entity_reference_actions/batch'];
+
+          $response->addCommand(new OpenModalDialogCommand($this->getActionLabel($action), $batch_page, $dialog_options));
+        }
       }
+
+      // Attach existing commands.
+      foreach ($commands as $command) {
+        $response->addCommand($command);
+      }
+      return $response;
     }
   }
 
@@ -428,7 +435,6 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
    */
   protected function getBulkOptions($filtered = TRUE) {
     $options = [];
-    $entity_type = $this->entityTypeManager->getDefinition($this->entityTypeId);
     // Filter the action list.
     /** @var \Drupal\system\ActionConfigEntityInterface $action */
     foreach ($this->actions as $id => $action) {
@@ -445,14 +451,31 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
           continue;
         }
       }
-      $label = $action->label();
-      if (isset($action->getPlugin()->getPluginDefinition()['action_label'])) {
-        $label = sprintf('%s all %s', $action->getPlugin()->getPluginDefinition()['action_label'], $entity_type->getPluralLabel());
-      }
-      $options[$id] = $label;
+      $options[$id] = $this->getActionLabel($action);
     }
 
     return $options;
+  }
+
+  /**
+   * Returns the label for an action.
+   *
+   * @param \Drupal\system\ActionConfigEntityInterface $action
+   *   The action.
+   *
+   * @return string
+   *   The action label.
+   *
+   * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
+   */
+  protected function getActionLabel(ActionConfigEntityInterface $action) {
+    $entity_type = $this->entityTypeManager->getDefinition($this->entityTypeId);
+
+    $label = $action->label();
+    if (isset($action->getPlugin()->getPluginDefinition()['action_label'])) {
+      $label = sprintf('%s all %s', $action->getPlugin()->getPluginDefinition()['action_label'], $entity_type->getPluralLabel());
+    }
+    return $label;
   }
 
 }
