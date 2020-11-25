@@ -173,13 +173,10 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
     $form_state->set($uuid, $context);
 
-    // Prepend a message area.
-    $element = [
-      'entity_reference_actions_messages' => [
-        '#type' => 'container',
-        '#attributes' => ['data-entity-reference-actions-messages' => ''],
-      ],
-    ] + $element;
+    $element['entity_reference_actions_messages'] = [
+      '#type' => 'container',
+      '#attributes' => ['data-entity-reference-actions-messages' => ''],
+    ];
 
     $element['entity_reference_actions'] = [
       '#type' => 'simple_actions',
@@ -286,6 +283,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
       }
       else {
         $batch_builder = (new BatchBuilder())
+          ->setTitle($this->getActionLabel($action))
           ->setFinishCallback([__CLASS__, 'batchFinish']);
         foreach ($entities as $entity) {
           $batch_builder->addOperation([__CLASS__, 'batchCallback'], [
@@ -345,7 +343,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
 
     $response = new AjaxResponse();
     $response->addCommand(new CloseModalDialogCommand());
-    $response->addCommand(new MessageCommand(t('Action was successful applied.'), '[data-entity-reference-actions-messages]'));
+    $response->addCommand(new MessageCommand(t('%action was successfully applied.', ['%action' => $batch['sets'][0]['title']]), '[data-entity-reference-actions-messages]'));
 
     // _batch_finished() only accepts a RedirectResponse. There is no
     // other chance to return our AjaxResponse without throwing this exception.
@@ -508,7 +506,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
       $response->addCommand(new ReplaceCommand('[data-drupal-selector="' . $form['#attributes']['data-drupal-selector'] . '"]', $form));
     }
     else {
-      $response->addCommand(new MessageCommand(t('Action was successful applied.'), '[data-entity-reference-actions-messages]'));
+      $response->addCommand(new MessageCommand(t('Action was successfully applied.'), '[data-entity-reference-actions-messages]'));
       $response->addCommand(new CloseModalDialogCommand());
     }
     return $response;
