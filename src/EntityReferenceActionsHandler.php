@@ -14,6 +14,9 @@ use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\DependencyInjection\DependencySerializationTrait;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\EventSubscriber\MainContentViewSubscriber;
+use Drupal\Core\Field\Plugin\Field\FieldWidget\OptionsButtonsWidget;
+use Drupal\Core\Field\Plugin\Field\FieldWidget\OptionsSelectWidget;
+use Drupal\Core\Field\Plugin\Field\FieldWidget\OptionsWidgetBase;
 use Drupal\Core\Form\EnforcedResponseException;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Session\AccountProxyInterface;
@@ -160,13 +163,11 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
    *   The context of this form.
    */
   public function formAlter(array &$element, FormStateInterface $form_state, array $context) {
-
-    /** @var \Drupal\Core\Field\FieldItemListInterface $items */
-    $items = $context['items'];
-    if ($items->isEmpty() || !$this->settings['enabled']) {
+    if (!$this->settings['enabled']) {
       return;
     }
-
+    /** @var \Drupal\Core\Field\FieldItemListInterface $items */
+    $items = $context['items'];
     $field_definition = $items->getFieldDefinition();
 
     $uuid = 'entity_reference_actions-' . $this->uuidGenerator->generate();
@@ -184,7 +185,11 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
       '#attached' => [
         'library' => [
           'core/drupal.dialog.ajax',
+          'core/drupal.states',
         ],
+      ],
+      '#states' => [
+        'visible' => $this->getVisibleStateConditions($element, $context),
       ],
     ];
 
@@ -192,6 +197,8 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
     foreach ($bulk_options as $id => $label) {
       $element['entity_reference_actions'][$id] = [
         '#type' => 'submit',
+        '#limit_validation_errors' => [$element['widget']['#parents']],
+        '#submit' => [],
         '#id' => $field_definition->getName() . '_' . $id . '_button',
         '#name' => $field_definition->getName() . '_' . $id . '_button',
         '#value' => $label,
@@ -366,7 +373,7 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
   public static function batchCallback($entity_id, $entity_type_id, $action_id) {
     $entity_type_manager = \Drupal::entityTypeManager();
 
-    /** @var \Drupal\Core\Action\ActionInterface $action */
+    /** @var \Drupal\system\ActionConfigEntityInterface $action */
     $action = $entity_type_manager->getStorage('action')->load($action_id);
 
     $entity = $entity_type_manager->getStorage($entity_type_id)->load($entity_id);
@@ -510,6 +517,47 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
       $response->addCommand(new CloseModalDialogCommand());
     }
     return $response;
+  }
+
+  /**
+   * Get the conditions to show the ERA button.
+   *
+   * @param array $element
+   *   The element with the attached action form.
+   * @param array $context
+   *   The context of this form.
+   */
+  protected function getVisibleStateConditions(array $element, array $context) {
+    /** @var \Drupal\Core\Field\FieldItemListInterface $items */
+    $items = $context['items'];
+
+    $parents = $element['widget']['#parents'];
+
+    $first_parent = array_shift($parents) . '[';
+    $secondary_parents = '';
+    if ($parents) {
+      $secondary_parents = implode('][', $parents) . ']';
+    }
+
+    $field_selector = 'name^="' . $first_parent . $secondary_parents . '"';
+    $state_selector = [":input[$field_selector]" => ['filled' => TRUE]];
+    $multiple = $items->getFieldDefinition()->getFieldStorageDefinition()->isMultiple();
+    if ($context['widget'] instanceof OptionsWidgetBase) {
+      $state_selector = [":input[$field_selector]" => ['checked' => TRUE]];
+    }
+    if ($context['widget'] instanceof OptionsButtonsWidget && !$multiple) {
+      $state_selector = [":input[$field_selector]" => ['!value' => isset($element['widget']['#empty_value']) ? $element['widget']['#empty_value'] : '_none']];
+    }
+    if ($context['widget'] instanceof OptionsSelectWidget) {
+      $state_selector = ["select[$field_selector]" => ['!value' => isset($element['widget']['#empty_value']) ? $element['widget']['#empty_value'] : '_none']];
+
+      // States doesn't work for a multiple select lists.
+      // See https://www.drupal.org/project/drupal/issues/1149078
+      if ($multiple) {
+        $state_selector = [];
+      }
+    }
+    return $state_selector;
   }
 
 }
