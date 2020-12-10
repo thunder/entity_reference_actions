@@ -264,7 +264,8 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
     $response = new AjaxResponse();
     if ($entities) {
       $dialog_options = [
-        'width' => 700,
+        'height' => '75%',
+        'width' => '75%',
       ];
       $operation_definition = $action->getPluginDefinition();
       if (!empty($operation_definition['confirm_form_route_name'])) {
