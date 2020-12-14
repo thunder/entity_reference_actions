@@ -264,7 +264,8 @@ class EntityReferenceActionsHandler implements ContainerInjectionInterface {
     $response = new AjaxResponse();
     if ($entities) {
       $dialog_options = [
-        'height' => '75%',
+        'minHeight' => '75%',
+        'maxHeight' => '75%',
         'width' => '75%',
       ];
       $operation_definition = $action->getPluginDefinition();
