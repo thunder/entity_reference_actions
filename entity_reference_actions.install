@@ -1,0 +1,25 @@
+<?php
+
+/**
+ * @file
+ * Contains install functions for entity_reference_actions.
+ */
+
+/**
+ * Implements hook_requirements().
+ */
+function entity_reference_actions_requirements($phase) {
+
+  $requirements = [];
+  $content = file_get_contents(DRUPAL_ROOT . '/' . drupal_get_path('module', 'field') . "/field.api.php");
+  if (strpos($content, 'hook_field_widget_complete_form_alter') == FALSE) {
+    $requirements['entity_reference_actions'] = [
+      'title' => t('Entity Reference Actions'),
+      'severity' => REQUIREMENT_ERROR,
+      'description' => t('Entity Reference Actions requires at least Drupal 9.2 or patch https://www.drupal.org/files/issues/2021-01-18/D8.9.x-2872162-31.patch'),
+    ];
+  }
+
+  return $requirements;
+
+}

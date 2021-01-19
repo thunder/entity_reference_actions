@@ -13,12 +13,5 @@
         "drupal/inline_entity_form": "^1.0",
         "drupal/paragraphs": "^1.0",
         "drupal/entity_reference_revisions": "^1.0"
-    },
-    "extra": {
-        "patches": {
-            "drupal/core": {
-                "No hook alter to override Field Widget wrappers created by WidgetBase::form": "https://www.drupal.org/files/issues/2018-06-04/2872162-field-widget-hook-10.patch"
-            }
-        }
     }
 }
