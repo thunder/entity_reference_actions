@@ -75,9 +75,11 @@ function entity_reference_actions_form_alter(&$form, FormStateInterface $form_st
     return;
   }
 
-  $form['actions']['submit']['#ajax']['callback'] = [
-    EntityReferenceActionsHandler::class,
-    'dialogAjaxSubmit',
-  ];
-  $form['actions']['cancel']['#attributes']['class'][] = 'dialog-cancel';
+  if (empty($form['actions']['submit']['#ajax']['callback'])) {
+    $form['actions']['submit']['#ajax']['callback'] = [
+      EntityReferenceActionsHandler::class,
+      'dialogAjaxSubmit',
+    ];
+    $form['actions']['cancel']['#attributes']['class'][] = 'dialog-cancel';
+  }
 }
